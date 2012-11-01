@@ -1,0 +1,17 @@
+
+.DS_Store
+
+.project
+
+.pydevproject
+
+*.zip
+
+*.pyc
+
+/colorama/*
+/data/*
+/out/*
+/projects/*
+/tools/*
+
