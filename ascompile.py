@@ -999,12 +999,18 @@ def genNode(node,loop=False,assign=False):
             pc2line.append([len(outcode),node[4]])
             outcode += chr(35)+pack('h',0)
         fill2(jump)
+        
+        isSingleStatement = False
         if node[3]:
             longjump.append((35,len(outcode)-2,len(outcode)))
+            
+            isSingleStatement = not (isinstance(node[3][0], types.ListType))
+            glTranslator.ifElse(isSingleStatement)
+            
             r2 = genNode(node[3],loop)         
             fill2(longjump)
         
-        glTranslator.ifEnd()    
+        glTranslator.ifEnd(isSingleStatement)    
         
         if r1:
             r = r1
@@ -1184,6 +1190,9 @@ def link(direct):
 
 def decl(prog):
     global scopechain, globalindex, outcode, pc2line,funcPC2Name
+    
+    glTranslator.checkTypes(prog)
+    
     scopechain.append(('g',{'null':0}))    
     globalindex += 1
     #outcode += pack('h',0)
