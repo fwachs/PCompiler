@@ -1,37 +1,34 @@
 import types
 
-class SymbolsStack:
-    symbols = []
+class Symbol:
+    name = ''
+    symbol = None
+    type = None
     
-    def beginScope(self):
-        self.symbols.append([])
-        return
-    
-    def endScope(self):
-        self.symbols.pop()
-        return
-    
-    def getScope(self, idx):
-        return self.symbols[idx]
-    
-    def addSymbol(self, name, sym):
-        scope = self.symbols[-1]
-        scope.append([name, sym])            
-        return
-    
-    def findSymbol(self, name, scopeIdx = -1):
-        scope = self.symbols[scopeIdx]
-            
-        for sym in reversed(scope):
-            if sym[0] == name:
-                return sym[1]
-        
-        scopeIdx -= 1
-        if scopeIdx <= -len(self.symbols):
-            return None
-        
-        return self.findSymbol(name, scopeIdx)
+    def __init__(self, name, symbol):
+        self.name = name
+        self.symbol = symbol
 
+class Scope(Symbol):
+    children = []
+    prevScope = None
+    
+    def addScope(self, scope):
+        scope.prevScope = self
+        scope.children = []
+        self.children.append(scope)
+
+    def addSymbol(self, symbol):
+        self.children.append(symbol)
+
+    def findSymbol(self, name):
+        for child in self.children:
+            if child.name == name:
+                return child
+        
+        if self.prevScope:
+            return self.prevScope.findSymbol(name)
+        
 class Translator:
     @staticmethod
     def createTranslator(translatorType):
@@ -49,7 +46,7 @@ class TranslatorIOS(Translator):
     className = None
     methodName = None
     tabDepth = -1
-    symbolsStack = SymbolsStack()
+    symbolsStack = Scope('global', None)
     
     def dumpTree(self, prog, tab = 0):
         idx = 0        
@@ -70,56 +67,91 @@ class TranslatorIOS(Translator):
         return
     
     def checkTypes(self, prog):
-        self.symbolsStack.beginScope()
-        self.inferTypes(prog[0][1])
-        self.symbolsStack.endScope()
+        self.scanSymbols(prog[0][1])
+        
+        self.inferTypes(prog[0][1], self.symbolsStack)
         
         self.dumpTree(prog)
         return
-
-    def inferTypes(self, node):
-        print node
-        
+    
+    def scanSymbols(self, prog):
+        for node in prog:
+            self.scanNode(node, self.symbolsStack)
+        return
+    
+    def scanNode(self, node, scope):
+        if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]        
+            varDefs = node[2]
+            for d in varDefs:
+                symb = Symbol(d[1][1], d[1])                     
+                scope.addSymbol(symb)
+        elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
+            fnScope = Scope(node[1], node)
+            scope.addScope(fnScope)
+            for child in node[3]:
+                self.scanNode(child, fnScope)
+        elif node[0] == 'clsdef':        
+            clsScope = Scope(node[1], node[1])
+            scope.addScope(clsScope)
+            for child in node[3]:
+                self.scanNode(child, clsScope)   
+        return
+    
+    def inferTypes(self, node, scope):
         if not node:
             return
+        
+        print node
                 
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]        
             varDefs = node[2]
             for d in varDefs:
                 if d[2]:
-                    T = self.evalType(d[2])
+                    T = self.evalType(d[2], scope)
                     if T:
                         d[1].append(T)
-                                                    
-                self.symbolsStack.addSymbol(d[1][1], d[1])
+                        sym = scope.findSymbol(d[1][1])
+                        sym.type = T
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
-            self.symbolsStack.addSymbol(node[1], node)
-            self.symbolsStack.beginScope()
             #node[2][1] -> function signature
-            self.inferTypes(node[3])
-            self.symbolsStack.endScope()
+            fnScope = scope.findSymbol(node[1])
+            self.inferTypes(node[3], fnScope)
         elif node[0] == 'clsdef':        
-            self.symbolsStack.beginScope()
-            self.inferTypes(node[3])
+            clsScope = scope.findSymbol(node[1])
+            self.inferTypes(node[3], clsScope)
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]
-            pass
+            methodSymbol = scope.findSymbol(node[1][1])
+            if methodSymbol:
+                idx = 0
+                for arg in node[2]:
+                    T = self.evalType(arg, scope)
+                    if T:
+                        #methodSymbol[2][1][idx].append(T)
+                        idx += 1
+            # else:
+            # the function symbol has not been defined yet
+            # could be a global or class method
+            # can cycle through all global functions, classes, class methods & attributes before starting,
+            # so no ids would be undefined    
         elif node[0] == 'super':
             pass
         elif node[0] == 'ret':
-            T = self.evalType(node[1][0])
+            T = self.evalType(node[1][0], scope)
             if T:
-                scope = self.symbolsStack.getScope(-2)
-                fnNode = scope[-1][1]
+                scope.type = T
+                fnNode = scope.symbol
                 fnNode[2][2] = T
         elif node[0] == 'id': #['id', 'a']
             pass
         elif node[0] == 'access':#['access', ['id', 'a'], ['[', [['i', '0']]] ]  #['access', ['this'], ['.', ['id', 'a']]]
             pass
         elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]
-            T = self.evalType(node[3])
+            T = self.evalType(node[3], scope)
             if T:
+                sym = scope.findSymbol(node[2][1])
                 node[2].append(T)
-                self.symbolsStack.addSymbol(node[2][1], node[2])
+                sym.node = node[2]
+                sym.type = T
         elif node[0] == 'uexp':
             pass
         elif node[0] == 'uexpop':
@@ -136,11 +168,11 @@ class TranslatorIOS(Translator):
             pass
         elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],
             #condition
-            self.inferTypes(node[1])
+            self.inferTypes(node[1], scope)
             #then
-            self.inferTypes(node[2])
+            self.inferTypes(node[2], scope)
             #else
-            self.inferTypes(node[3])
+            self.inferTypes(node[3], scope)
         elif node[0] == 'do': 
             pass
         elif node[0] == 'while':        
@@ -159,19 +191,19 @@ class TranslatorIOS(Translator):
             pass
         else:
             for n in node:
-                self.inferTypes(n)
+                self.inferTypes(n, scope)
         return None
     
-    def evalType(self, expr):
+    def evalType(self, expr, scope):
         if expr[0] == 'i':
             return 'int'
         elif expr[0] == 's':
             return 'string'
         elif expr[0] == 'id':
             idToFind = expr[1]
-            sym = self.symbolsStack.findSymbol(idToFind)
-            if sym and len(sym) > 3:
-                return sym[3]
+            sym = scope.findSymbol(idToFind)
+            if sym:
+                return sym.type
         #elif isinstance(expr[0], types.ListType):
         #    return self.evalType(expr[0])
 
