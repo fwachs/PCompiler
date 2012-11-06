@@ -88,6 +88,11 @@ class TranslatorIOS(Translator):
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
             fnScope = Scope(node[1], node)
             scope.addScope(fnScope)
+            
+            for arg in node[2][1]:
+                sym = Symbol(arg[0][1], arg)
+                fnScope.addSymbol(sym)
+            
             for child in node[3]:
                 self.scanNode(child, fnScope)
         elif node[0] == 'clsdef':        
@@ -101,12 +106,14 @@ class TranslatorIOS(Translator):
         if not node:
             return
         
-        print node
+        #print node
                 
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]        
             varDefs = node[2]
             for d in varDefs:
                 if d[2]:
+                    self.inferTypes(d[2], scope)
+
                     T = self.evalType(d[2], scope)
                     if T:
                         d[1].append(T)
@@ -119,14 +126,17 @@ class TranslatorIOS(Translator):
         elif node[0] == 'clsdef':        
             clsScope = scope.findSymbol(node[1])
             self.inferTypes(node[3], clsScope)
-        elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]
+        elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]            
             methodSymbol = scope.findSymbol(node[1][1])
             if methodSymbol:
                 idx = 0
                 for arg in node[2]:
                     T = self.evalType(arg, scope)
                     if T:
-                        #methodSymbol[2][1][idx].append(T)
+                        signatureArg =  methodSymbol.symbol[2][1][idx]
+                        signatureArg[0].append(T)
+                        argSym = methodSymbol.findSymbol(signatureArg[0][1])
+                        argSym.type = T
                         idx += 1
             # else:
             # the function symbol has not been defined yet
@@ -136,6 +146,8 @@ class TranslatorIOS(Translator):
         elif node[0] == 'super':
             pass
         elif node[0] == 'ret':
+            self.inferTypes(node[1][0], scope)
+            
             T = self.evalType(node[1][0], scope)
             if T:
                 scope.type = T
@@ -238,6 +250,14 @@ class TranslatorIOS(Translator):
         self.className = None
         return
     
+    def getNativeType(self, type):
+        if type == 'string':
+            return 'NSString *'
+        elif type == 'int':
+            return 'int'
+        else:
+            return 'UNKNOWN_TYPE'
+    
     def beginMethod(self, node):        
         signature = node[2][1]
         
@@ -248,12 +268,21 @@ class TranslatorIOS(Translator):
         else:
             self.methodName = node[1]
         
-            funcString = '- (id)%s'%(node[1])
+            funcString = '- (%s)%s'%(self.getNativeType(self.getNativeType('')), node[1])
             if signature != None:
+                retType = ''
+                if len(signature) > 2:
+                    retType = signature[2]
+                    
+                funcString = '- (%s)%s'%(self.getNativeType(retType), node[1])
                 if len(signature):
                     idx = 0
                     for arg in signature:
-                        funcString += 'WithArg%d:(id)%s'%(idx, arg[0][1])
+                        argType = ''
+                        if len(arg[0]) > 3:
+                            argType = arg[0][3]
+                            
+                        funcString += 'WithArg%d:(%s)%s'%(idx, self.getNativeType(argType), arg[0][1])
                         idx = idx + 1     
                         if idx < len(signature):
                             funcString += ' '
