@@ -503,7 +503,11 @@ def genNode(node,loop=False,assign=False):
         
         cnt = 0
         for n in node[2]:            
-            glTranslator.varDefBegin(n[1][1], cnt)
+            argType = ''
+            if len(n[1]) > 3:
+                argType = n[1][3]
+                
+            glTranslator.varDefBegin(n[1][1], argType, cnt)
             
             value = scopechain[-1][1].get(n[1][1])
             if value:
@@ -560,7 +564,7 @@ def genNode(node,loop=False,assign=False):
                 if arg[0]=='...':
                     scopechain[-1][1][arg[1]] = [-localindex-1,arg]
                 else:
-                    if len(arg)==2:
+                    if len(arg)==3:
                         start = 1
                     if start and len(arg) == 1:
                         ERROR(1138,line=node[2][3])

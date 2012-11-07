@@ -1,4 +1,4 @@
-import types
+import types, copy
 
 class Symbol:
     name = ''
@@ -47,6 +47,7 @@ class TranslatorIOS(Translator):
     methodName = None
     tabDepth = -1
     symbolsStack = Scope('global', None)
+    passCount = 3
     
     def dumpTree(self, prog, tab = 0):
         idx = 0        
@@ -69,7 +70,9 @@ class TranslatorIOS(Translator):
     def checkTypes(self, prog):
         self.scanSymbols(prog[0][1])
         
-        self.inferTypes(prog[0][1], self.symbolsStack)
+        while self.passCount > 0:
+            self.inferTypes(prog[0][1], self.symbolsStack)
+            self.passCount -= 1
         
         self.dumpTree(prog)
         return
@@ -105,19 +108,23 @@ class TranslatorIOS(Translator):
     def inferTypes(self, node, scope):
         if not node:
             return
+        if not isinstance(node, types.ListType):
+            return
         
-        #print node
+        print node
                 
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]        
             varDefs = node[2]
             for d in varDefs:
+                sym = scope.findSymbol(d[1][1])
+                if not sym:
+                    sym = Symbol(d[1][1], d)
+                    scope.addSymbol(sym)
                 if d[2]:
-                    self.inferTypes(d[2], scope)
-
-                    T = self.evalType(d[2], scope)
+                    T = self.inferTypes(d[2], scope)
                     if T:
-                        d[1].append(T)
-                        sym = scope.findSymbol(d[1][1])
+                        if self.passCount == 1:
+                            d[1].append(T)                        
                         sym.type = T
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
             #node[2][1] -> function signature
@@ -131,13 +138,15 @@ class TranslatorIOS(Translator):
             if methodSymbol:
                 idx = 0
                 for arg in node[2]:
-                    T = self.evalType(arg, scope)
+                    T = self.inferTypes(arg, scope)
                     if T:
                         signatureArg =  methodSymbol.symbol[2][1][idx]
-                        signatureArg[0].append(T)
+                        if self.passCount == 1:
+                            signatureArg[0].append(T)
                         argSym = methodSymbol.findSymbol(signatureArg[0][1])
                         argSym.type = T
                         idx += 1
+                return methodSymbol.type
             # else:
             # the function symbol has not been defined yet
             # could be a global or class method
@@ -146,23 +155,26 @@ class TranslatorIOS(Translator):
         elif node[0] == 'super':
             pass
         elif node[0] == 'ret':
-            self.inferTypes(node[1][0], scope)
-            
-            T = self.evalType(node[1][0], scope)
+            T = self.inferTypes(node[1][0], scope)
             if T:
                 scope.type = T
                 fnNode = scope.symbol
-                fnNode[2][2] = T
+                if self.passCount == 1:
+                    fnNode[2][2] = T
+                return T
         elif node[0] == 'id': #['id', 'a']
-            pass
+            idToFind = node[1]
+            sym = scope.findSymbol(idToFind)
+            if sym:
+                return sym.type
         elif node[0] == 'access':#['access', ['id', 'a'], ['[', [['i', '0']]] ]  #['access', ['this'], ['.', ['id', 'a']]]
             pass
         elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]
-            T = self.evalType(node[3], scope)
+            T = self.inferTypes(node[3], scope)
             if T:
                 sym = scope.findSymbol(node[2][1])
-                node[2].append(T)
-                sym.node = node[2]
+                if self.passCount == 1:
+                    sym.symbol.append(T)
                 sym.type = T
         elif node[0] == 'uexp':
             pass
@@ -171,11 +183,11 @@ class TranslatorIOS(Translator):
         elif node[0] == 'biexp':#['biexp', '*', ['i', '2'], ['i', '2']]        
             pass
         elif node[0] == 'i':        
-            pass
+            return 'int'
         elif node[0] == 'f':
             pass
         elif node[0] == 's':       
-            pass
+            return 'string'
         elif node[0] == 'array':
             pass
         elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],
@@ -190,7 +202,7 @@ class TranslatorIOS(Translator):
         elif node[0] == 'while':        
             pass
         elif node[0] == 'for':
-            pass
+            self.inferTypes(node[1:], scope)
         elif node[0] == 'continue':
             pass
         elif node[0] == 'break':
@@ -204,21 +216,6 @@ class TranslatorIOS(Translator):
         else:
             for n in node:
                 self.inferTypes(n, scope)
-        return None
-    
-    def evalType(self, expr, scope):
-        if expr[0] == 'i':
-            return 'int'
-        elif expr[0] == 's':
-            return 'string'
-        elif expr[0] == 'id':
-            idToFind = expr[1]
-            sym = scope.findSymbol(idToFind)
-            if sym:
-                return sym.type
-        #elif isinstance(expr[0], types.ListType):
-        #    return self.evalType(expr[0])
-
         return None
     
     def beginFile(self, fileName):
@@ -267,12 +264,11 @@ class TranslatorIOS(Translator):
             self.methodName = 'init'
         else:
             self.methodName = node[1]
+
+            retType = node[2][2]
         
             funcString = '- (%s)%s'%(self.getNativeType(self.getNativeType('')), node[1])
             if signature != None:
-                retType = ''
-                if len(signature) > 2:
-                    retType = signature[2]
                     
                 funcString = '- (%s)%s'%(self.getNativeType(retType), node[1])
                 if len(signature):
@@ -341,7 +337,7 @@ class TranslatorIOS(Translator):
     def staticFunctionId(self, name):
         return
     
-    def methodCallBegin(self):
+    def methodCallBegin(self, name):
         self.mFileMethodBody += '['
         return
     
@@ -431,9 +427,9 @@ class TranslatorIOS(Translator):
             self.mFileMethodBody += self.tabString(self.tabDepth) + '}'
         return
     
-    def varDefBegin(self, name, cnt):
+    def varDefBegin(self, name, type, cnt):
         if cnt == 0:
-            self.mFileMethodBody += 'id '
+            self.mFileMethodBody += '%s '%(self.getNativeType(type))
         else:
             self.mFileMethodBody += ', '            
             
