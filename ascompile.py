@@ -607,6 +607,15 @@ def genNode(node,loop=False,assign=False):
             genNode(node[3])
             glTranslator.endClass(node)
             scopechain.pop()    
+    elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]
+        glTranslator.newObjectBegin(node[1][1])    
+        
+        for i in range(len(node[2])):                    
+            glTranslator.newObjectArgument(i)
+            genNode(node[2][i])
+                
+        glTranslator.newObjectEnd()                
+        
     elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]
         sig = None
         if node[1] == 'super':

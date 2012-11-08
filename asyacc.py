@@ -619,7 +619,7 @@ def p_PostfixExpression(p):
 
 def p_FullNewExpression(p):
     'FullNewExpression : NEW FullNewSubexpression Arguments'
-    p[0] = ['call', p[2], p[3] ,p.lineno(3)]
+    p[0] = ['new', p[2], p[3] ,p.lineno(3)]
 
 def p_FullNewSubexpression_0(p):
     '''FullNewSubexpression : PrimaryExpression
@@ -648,7 +648,7 @@ def p_FullPostfixExpression_2(p):
 
 def p_ShortNewExpression(p):
     'ShortNewExpression : NEW ShortNewSubexpression'
-    p[0] = ['call', p[2],[],p.lineno(1)]
+    p[0] = ['new', p[2],[],p.lineno(1)]
 
 def p_ShortNewSubexpression(p):
     '''ShortNewSubexpression : FullNewSubexpression
