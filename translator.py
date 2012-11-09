@@ -3,7 +3,7 @@ import aslex
 import asyacc
 
 class Translator:
-    translator = None
+    passCount = 2
     
     @staticmethod
     def createTranslator(translatorType):
@@ -18,44 +18,50 @@ class Translator:
         return tabs        
     
     def begin(self):
-        self.compile()
-        return
-    
-    def compile(self):
         fname = 'projects/housewifewars/housewifewars.as'
-        
-        self.beginFile(fname)
-           
-        data = open(fname).read()
         currentDir = fname[:fname.rfind(os.sep)+1]
-        
-        print 'Parsing file : %s'%(fname)
+
+        data = open(fname).read()
         prog = asyacc.parse(data)
     
         tyinf = type_inference.TypeInferencer()        
-        tyinf.checkTypes(prog[1])
+        tyinf.checkTypes(prog)
         
-        self.parseNode(prog[1])
+        while self.passCount > 0:
+            self.compile(fname, prog, tyinf)
+            self.passCount -= 1
+        return
+    
+    def compile(self, fname, prog, tyinf):
+        print 'Parsing file : %s'%(fname)
+
+        self.beginFile(fname)
         
+        self.parseNode(prog[1], tyinf.symbolsStack)
         tyinf.dumpTree(prog)
         
         self.endFile()
         return
     
-    def parseNode(self, node, loop = False, assign = False):
+    def parseNode(self, node, scope = None):
         print "*    ", node,'\n'
         
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                    
             cnt = 0
             for n in node[2]:            
-                argType = ''
-                if len(n[1]) > 3:
-                    argType = n[1][3]
-                    
-                self.varDefBegin(n[1][1], argType, cnt)
+                sym = scope.findSymbol(n[1][1])
+                if not sym:
+                    sym = type_inference.Symbol(n[1][1], n)
+                    scope.addSymbol(sym)
 
+                T = sym.type
+                self.varDefBegin(n[1][1], T, cnt)
+                
                 if n[2]:
-                    self.parseNode(n[2])
+                    T = self.parseNode(n[2], scope)
+                    if T:
+                        n[1].append(T)                        
+                        sym.type = T
                 else:
                     self.nullConstant()
                                             
@@ -63,10 +69,12 @@ class Translator:
                 cnt += 1
                 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
+            fnScope = scope.findSymbol(node[1])
+            
             self.beginMethod(node)
     
             if node[3]:
-                self.parseNode(node[3])
+                self.parseNode(node[3], fnScope)
             if not node[3] or node[3][-1][0]!='ret':
                 self.emptyRet(node)
                 
@@ -75,24 +83,33 @@ class Translator:
         elif node[0] == 'clsdef':        
             if node[3]:
                 self.beginClass(node)
-                self.parseNode(node[3])
+                clsScope = scope.findSymbol(node[1])
+                self.parseNode(node[3], clsScope)
                 self.endClass(node)
         elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]
             self.newObjectBegin(node[1][1])    
             
             for i in range(len(node[2])):                    
                 self.newObjectArgument(i)
-                self.parseNode(node[2][i])
+                self.parseNode(node[2][i], scope)
                     
             self.newObjectEnd()                
             
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]
-            self.methodCallBegin()    
-            sig = self.parseNode(node[1])                
-            if sig:
-                for i in range(len(sig[1])):                    
+            self.methodCallBegin()
+                
+            methodSymbol = scope.findSymbol(node[1][1])
+                
+            self.parseNode(node[1], scope)                
+            if len(node[2]):
+                for i in range(len(node[2])):                    
                     self.methodCallArgument(i)
-                    self.parseNode(node[2][i])
+                    T = self.parseNode(node[2][i], scope)
+                    if T and methodSymbol:
+                        signatureArg =  methodSymbol.symbol[2][1][i]
+                        signatureArg[0].append(T)
+                        argSym = methodSymbol.findSymbol(signatureArg[0][1])
+                        argSym.type = T
                     
             self.methodCallEnd()
         elif node[0] == 'super':
@@ -100,97 +117,123 @@ class Translator:
         elif node[0] == 'ret':
             self.retBegin()
             
+            T = ''
             if node[1]:
-                self.parseNode(node[1][-1])
+                T = self.parseNode(node[1][-1], scope)
             else:
-                self.parseNode(['null'])
+                self.parseNode(['null'], scope)
             
             self.retEnd()
+            
+            if T:
+                scope.type = T
+                fnNode = scope.symbol
+                fnNode[2][2] = T
+                return T
+
         elif node[0] == 'id': #['id', 'a']
-            self.localId(node[1])
+            idToFind = node[1]
+            self.localId(idToFind)
+            sym = scope.findSymbol(idToFind)
+            if sym:
+                return sym.type
 
         elif node[0] == 'access':#['access', ['id', 'a'], ['[', [['i', '0']]] ]  #['access', ['this'], ['.', ['id', 'a']]]
             if node[2][0] == '[':
                 print 'access ['
-                self.parseNode(node[1])            
-                self.parseNode(node[2][1][0])
+                self.parseNode(node[1], scope)            
+                self.parseNode(node[2][1][0], scope)
             else:
                 if node[1][0] == 'this':                
                     self.memberId(node[2][1][1])
                 elif node[1][0] == 'super':
                     print 'access super'
                 else:
-                    self.parseNode(node[1])            
+                    self.parseNode(node[1], scope)            
         elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]
-            self.assignBegin()
-            ret = self.parseNode(node[2],loop,True)
+            self.assignBegin()            
+            self.parseNode(node[2], scope)
+            
             self.assignMiddle(node[1])
-            self.parseNode(node[3])
+            
+            T = self.parseNode(node[3], scope)
+            if T:
+                sym = scope.findSymbol(node[2][1])
+                sym.symbol.append(T)
+                sym.type = T
             self.assignEnd()
         elif node[0] == 'uexp':
             if node[1] == '+':
                 self.unOp(node[1])
                 
-                self.parseNode(node[2])
+                T = self.parseNode(node[2], scope)
+                return T
             elif node[1] == '-':
                 self.unOp(node[1])
                 
-                self.parseNode(node[2])
+                T = self.parseNode(node[2], scope)
+                return T
             elif node[1] == '++':
-                self.parseNode(n)
-                self.unOp(node[1])            
-                return
-            elif node[1] == '--':
-                self.parseNode(n)
+                T = self.parseNode(n, scope)
                 self.unOp(node[1])
-                return
+                return T
+            elif node[1] == '--':
+                T = self.parseNode(n, scope)
+                self.unOp(node[1])
+                return T
             elif node[1] == '~':
                 print "Warning: ~ operator not supported"
             elif node[1] == '!':
                 self.unOp(node[1])
                 
-                self.parseNode(node[2])
+                T = self.parseNode(node[2], scope)
+                return T
         elif node[0] == 'uexpop':
-            self.parseNode(node[2])
+            T = self.parseNode(node[2], scope)
             
-            self.unOp(node[1])                        
+            self.unOp(node[1])
+            return T                        
         elif node[0] == 'biexp':#['biexp', '*', ['i', '2'], ['i', '2']]        
-            self.parseNode(node[2])
+            self.parseNode(node[2], scope)
             self.binOp(node[1])        
-            self.parseNode(node[3])            
+            T = self.parseNode(node[3], scope)
+            return T            
         elif node[0] == 'i':        
             number = int(node[1])
             self.intConstant(number)
+            return 'int'
         elif node[0] == 'f':
             number = float(node[1])        
             self.floatConstant(number)
+            return 'float'
         elif node[0] == 's':       
             self.stringConstant(node[1])
+            return 'string'
         elif node[0] == 'array':
             for exp in node[1]:
-                self.parseNode(exp)        
+                self.parseNode(exp, scope)        
         elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],
             self.ifBegin()
     
             self.ifExpBegin()
             
             for exp in node[1]:
-                self.parseNode(exp)
+                self.parseNode(exp, scope)
             
             self.ifExpEnd()
                     
             if node[2]:
                 if isinstance(node[2][0], types.ListType):            
-                    r1 = self.parseNode(node[2],loop)        
+                    r1 = self.parseNode(node[2], scope)        
                 else:
-                    r1 = self.parseNode([node[2]],loop)        
+                    r1 = self.parseNode([node[2]], scope)        
             
             isSingleStatement = False
             if node[3]:
                 isSingleStatement = not (isinstance(node[3][0], types.ListType))
                 self.ifElse(isSingleStatement)
                 
-                r2 = self.parseNode(node[3],loop)         
+                r2 = self.parseNode(node[3], scope)         
             
             self.ifEnd(isSingleStatement)    
         elif node[0] == 'do': 
@@ -199,40 +242,40 @@ class Translator:
             self.whileBegin()
             
             for exp in node[1]:
-                self.parseNode(exp)
+                self.parseNode(exp, scope)
                 
             self.whileBlock()
             if node[2]:
                 if isinstance(node[2][0], types.ListType):            
-                    r1 = self.parseNode(node[2],True)        
+                    r1 = self.parseNode(node[2], scope)        
                 else:
-                    r1 = self.parseNode([node[2]],True)        
+                    r1 = self.parseNode([node[2]], scope)        
                 
             self.whileEnd()
         elif node[0] == 'for':
             self.forBegin()
             
             if node[1]:
-                self.parseNode(node[1])
+                self.parseNode(node[1], scope)
             
             self.forCondition()
             
             if node[2]:
                 for exp in node[2]:
-                    self.parseNode(exp)
+                    self.parseNode(exp, scope)
     
             self.forStep()
             
             if node[3]:
-                self.parseNode(node[3][0])
+                self.parseNode(node[3][0], scope)
             
             self.forBlock()
             
             if node[4]:
                 if isinstance(node[4][0], types.ListType):            
-                    r1 = self.parseNode(node[4],True)        
+                    r1 = self.parseNode(node[4], scope)        
                 else:
-                    r1 = self.parseNode([node[4]],True)        
+                    r1 = self.parseNode([node[4]], scope)        
                 
             self.forEnd()
             
@@ -249,7 +292,7 @@ class Translator:
         else:
             for n in node:
                 self.statementBegin()
-                self.parseNode(n,loop)
+                self.parseNode(n, scope)
                 self.statementEnd()
         return None
     

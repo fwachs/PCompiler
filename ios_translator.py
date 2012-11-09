@@ -49,22 +49,27 @@ class TranslatorIOS(translator.Translator):
         else:
             return 'UNKNOWN_TYPE'
     
-    def beginMethod(self, node):        
-        signature = node[2][1]
-        
+    def beginMethod(self, node):
+        if self.methodName == 'init':
+            self.endMethod([0, 0])
+                        
         funcString = ''
         if node[1] == 0:
             funcString = '- (id)init'
             self.methodName = 'init'
         else:
             self.methodName = node[1]
+            
+            if self.methodName == self.className:
+                self.methodName = 'init'
 
+            signature = node[2][1]
             retType = node[2][2]
         
-            funcString = '- (%s)%s'%(self.getNativeType(self.getNativeType('')), node[1])
+            funcString = '- (%s)%s'%(self.getNativeType(self.getNativeType('')), self.methodName)
             if signature != None:
                     
-                funcString = '- (%s)%s'%(self.getNativeType(retType), node[1])
+                funcString = '- (%s)%s'%(self.getNativeType(retType), self.methodName)
                 if len(signature):
                     idx = 0
                     for arg in signature:
@@ -229,6 +234,9 @@ class TranslatorIOS(translator.Translator):
         return
     
     def varDefBegin(self, name, type, cnt):
+        if not self.methodName:
+            self.beginMethod([0, 0])
+        
         if cnt == 0:
             self.mFileMethodBody += '%s '%(self.getNativeType(type))
         else:
