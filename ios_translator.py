@@ -11,6 +11,7 @@ class TranslatorIOS(translator.Translator):
     className = None
     methodName = None
     tabDepth = -1
+    isInsideACall = False
         
     def beginFile(self, fileName):
         mFileName = fileName.replace('.as', '.m')
@@ -36,37 +37,48 @@ class TranslatorIOS(translator.Translator):
         return
     
     def endClass(self, node):
-        self.hFileHandler.write('@interface %s {\n%s}\n\n%s\n@end\n'%(self.className, self.hFileVarDefs, self.hFileMethodDefs))
+        self.hFileHandler.write('@interface %s {\n%s}\n\n%s\n@end\n\n'%(self.className, self.hFileVarDefs, self.hFileMethodDefs))
         self.mFileHandler.write('%s@end\n\n'%(self.mFileMethodDefs))
         self.className = None
+        self.methodName = None
+        self.hFileVarDefs = ''
+        self.hFileMethodDefs = ''
+        self.mFileMethodDefs = ''
+        self.mFileMethodBody = ''
         return
     
-    def getNativeType(self, type):
-        if type == 'string':
+    def getNativeType(self, itype):
+        if itype == 'string':
             return 'NSString *'
-        elif type == 'int':
+        elif itype == 'int':
             return 'int'
-        else:
+        elif itype == 'id':
+            return 'id'
+        elif not itype:
             return 'UNKNOWN_TYPE'
+        else:
+            return '%s *'%(itype)
     
     def beginMethod(self, node):
         if self.methodName == 'init':
             self.endMethod([0, 0])
                         
         funcString = ''
+        signature = None
         if node[1] == 0:
             funcString = '- (id)init'
             self.methodName = 'init'
         else:
             self.methodName = node[1]
             
-            if self.methodName == self.className:
-                self.methodName = 'init'
-
             signature = node[2][1]
             retType = node[2][2]
+            
+            if self.methodName == self.className:
+                self.methodName = 'init'
+                retType = 'id'
         
-            funcString = '- (%s)%s'%(self.getNativeType(self.getNativeType('')), self.methodName)
+            funcString = '- (%s)%s'%(self.getNativeType(retType), self.methodName)
             if signature != None:
                     
                 funcString = '- (%s)%s'%(self.getNativeType(retType), self.methodName)
@@ -85,7 +97,14 @@ class TranslatorIOS(translator.Translator):
                     
         self.hFileMethodDefs += funcString + ';\n'
         
-        self.mFileMethodBody += funcString + '\n{\n'           
+        self.mFileMethodBody += funcString + '\n{\n'   
+        
+        if self.methodName == 'init':
+            if signature:
+                self.mFileMethodBody += '\tself = [self init];\n'        
+            else:
+                self.mFileMethodBody += '\tself = [super init];\n'        
+            self.mFileMethodBody += '\tif(self) {\n'        
         return
     
     def emptyRet(self, node):
@@ -100,6 +119,10 @@ class TranslatorIOS(translator.Translator):
         return
         
     def endMethod(self, node):
+        if self.methodName == 'init':
+            self.mFileMethodBody += '\t}\n'        
+            self.mFileMethodBody += '\treturn self;\n'
+                    
         self.mFileMethodBody += '}\n\n'
         
         self.mFileHandler.write(self.mFileMethodBody)
@@ -116,7 +139,6 @@ class TranslatorIOS(translator.Translator):
     
     def memberId(self, name):
         if name not in self.definedIds:
-            self.hFileVarDefs += '\tid %s;\n'%(name)
             self.definedIds.append(name)
         
         self.mFileMethodBody += 'self.%s'%(name)
@@ -138,15 +160,18 @@ class TranslatorIOS(translator.Translator):
     
     def methodCallBegin(self):
         self.mFileMethodBody += '['
+        self.isInsideACall = True
         return
     
     def methodCallArgument(self, argIdx):
+        self.isInsideACall = False
         if argIdx > 0:
             self.mFileMethodBody += ' '
         self.mFileMethodBody += 'WithArg%d:'%(argIdx)
         return
     
     def methodCallEnd(self):
+        self.isInsideACall = False
         self.mFileMethodBody += ']'
         return
     
@@ -233,16 +258,20 @@ class TranslatorIOS(translator.Translator):
             self.mFileMethodBody += self.tabString(self.tabDepth) + '}'
         return
     
-    def varDefBegin(self, name, type, cnt):
+    def varDefBegin(self, name, itype, cnt):
         if not self.methodName:
             self.beginMethod([0, 0])
-        
-        if cnt == 0:
-            self.mFileMethodBody += '%s '%(self.getNativeType(type))
+                        
+        if self.methodName == 'init':
+            self.hFileVarDefs += '\t%s %s;\n'%(self.getNativeType(itype), name)
+            self.mFileMethodBody += '\t\tself.%s = '%(name)
         else:
-            self.mFileMethodBody += ', '            
-            
-        self.mFileMethodBody += '%s = '%(name)
+            if cnt == 0:
+                self.mFileMethodBody += '%s '%(self.getNativeType(itype))
+            else:
+                self.mFileMethodBody += ', '            
+                
+            self.mFileMethodBody += '%s = '%(name)
         return
     
     def varDefEnd(self):
@@ -298,5 +327,13 @@ class TranslatorIOS(translator.Translator):
 
     def this(self):
         self.mFileMethodBody += 'self'
+        return
+
+    def point(self):
+        self.mFileMethodBody += '.'
+        return
+
+    def space(self):
+        self.mFileMethodBody += ' '
         return
         

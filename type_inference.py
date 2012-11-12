@@ -32,6 +32,7 @@ class Scope(Symbol):
 class TypeInferencer():
     symbolsStack = Scope('global', None)
     passCount = 3
+    thisScope = None
     
     def tabString(self, depth):
         tabs = ''
@@ -84,12 +85,14 @@ class TypeInferencer():
             fnScope = Scope(node[1], node)
             scope.addScope(fnScope)
             
-            for arg in node[2][1]:
-                sym = Symbol(arg[0][1], arg)
-                fnScope.addSymbol(sym)
-            
-            for child in node[3]:
-                self.scanNode(child, fnScope)
+            if node[2][1]:
+                for arg in node[2][1]:
+                    sym = Symbol(arg[0][1], arg)
+                    fnScope.addSymbol(sym)
+                    
+            if node[3]:
+                for child in node[3]:
+                    self.scanNode(child, fnScope)
         elif node[0] == 'clsdef':        
             clsScope = Scope(node[1], node[1])
             scope.addScope(clsScope)

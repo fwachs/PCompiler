@@ -3,7 +3,8 @@ import aslex
 import asyacc
 
 class Translator:
-    passCount = 2
+    passCount = 3
+    inferencer = None
     
     @staticmethod
     def createTranslator(translatorType):
@@ -18,7 +19,7 @@ class Translator:
         return tabs        
     
     def begin(self):
-        fname = 'projects/housewifewars/housewifewars.as'
+        fname = 'projects/housewifewars/screen.as'
         currentDir = fname[:fname.rfind(os.sep)+1]
 
         data = open(fname).read()
@@ -26,6 +27,7 @@ class Translator:
     
         tyinf = type_inference.TypeInferencer()        
         tyinf.checkTypes(prog)
+        self.inferencer = tyinf
         
         while self.passCount > 0:
             self.compile(fname, prog, tyinf)
@@ -38,13 +40,13 @@ class Translator:
         self.beginFile(fname)
         
         self.parseNode(prog[1], tyinf.symbolsStack)
-        tyinf.dumpTree(prog)
+        #tyinf.dumpTree(prog)
         
         self.endFile()
         return
     
     def parseNode(self, node, scope = None):
-        print "*    ", node,'\n'
+        #print "*    ", node,'\n'
         
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                    
             cnt = 0
@@ -75,8 +77,6 @@ class Translator:
     
             if node[3]:
                 self.parseNode(node[3], fnScope)
-            if not node[3] or node[3][-1][0]!='ret':
-                self.emptyRet(node)
                 
             self.endMethod(node)
             
@@ -84,34 +84,61 @@ class Translator:
             if node[3]:
                 self.beginClass(node)
                 clsScope = scope.findSymbol(node[1])
+                self.inferencer.thisScope = clsScope 
                 self.parseNode(node[3], clsScope)
                 self.endClass(node)
         elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]
             self.newObjectBegin(node[1][1])    
             
+            constructorSym = None
+            clsSym = self.inferencer.symbolsStack.findSymbol(node[1][1])
+            if clsSym:
+                constructorSym = clsSym.findSymbol(node[1][1])
             for i in range(len(node[2])):                    
                 self.newObjectArgument(i)
-                self.parseNode(node[2][i], scope)
+                Targ = self.parseNode(node[2][i], scope)
+                if Targ and constructorSym:
+                    signatureArg =  constructorSym.symbol[2][1][i]
+                    signatureArg[0].append(Targ)
+                    argSym = constructorSym.findSymbol(signatureArg[0][1])
+                    #argSym.type = Targ
                     
-            self.newObjectEnd()                
+            self.newObjectEnd()
+            
+            return node[1][1]                
             
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]
             self.methodCallBegin()
                 
             methodSymbol = scope.findSymbol(node[1][1])
-                
-            self.parseNode(node[1], scope)                
+            
+            print node[1][1]
+
+            T = 'None'
+            if node[1][0] == 'access':                    
+                T = self.parseNode(node[1][1], scope)
+                self.space()
+                clsScope = self.inferencer.symbolsStack.findSymbol(T)
+                if not clsScope:
+                    clsScope = scope
+                T = self.parseNode(node[1][2][1], clsScope)
+                methodSymbol = clsScope.findSymbol(node[1][1])             
+            else:
+                T = self.parseNode(node[1], scope)
+               
             if len(node[2]):
                 for i in range(len(node[2])):                    
                     self.methodCallArgument(i)
-                    T = self.parseNode(node[2][i], scope)
-                    if T and methodSymbol:
+                    Targ = self.parseNode(node[2][i], scope)
+                    if Targ and methodSymbol:
                         signatureArg =  methodSymbol.symbol[2][1][i]
-                        signatureArg[0].append(T)
+                        signatureArg[0].append(Targ)
                         argSym = methodSymbol.findSymbol(signatureArg[0][1])
-                        argSym.type = T
-                    
+                        argSym.type = Targ
+            
             self.methodCallEnd()
+            
+            return T
         elif node[0] == 'super':
             return     
         elif node[0] == 'ret':
@@ -144,12 +171,12 @@ class Translator:
                 self.parseNode(node[1], scope)            
                 self.parseNode(node[2][1][0], scope)
             else:
-                if node[1][0] == 'this':                
-                    self.memberId(node[2][1][1])
-                elif node[1][0] == 'super':
-                    print 'access super'
-                else:
-                    self.parseNode(node[1], scope)            
+                T = self.parseNode(node[1], scope)
+                self.point()
+                clsScope = self.inferencer.symbolsStack.findSymbol(T)
+                if not clsScope:
+                    clsScope = scope
+                return self.parseNode(node[2][1], clsScope)
         elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]
             self.assignBegin()            
             self.parseNode(node[2], scope)
@@ -159,8 +186,9 @@ class Translator:
             T = self.parseNode(node[3], scope)
             if T:
                 sym = scope.findSymbol(node[2][1])
-                sym.symbol.append(T)
-                sym.type = T
+                if sym:
+                    sym.symbol.append(T)
+                    sym.type = T
             self.assignEnd()
         elif node[0] == 'uexp':
             if node[1] == '+':
@@ -289,6 +317,7 @@ class Translator:
             self.nullConstant()            
         elif node[0] == 'this':
             self.this()
+            return self.inferencer.thisScope.name
         else:
             for n in node:
                 self.statementBegin()
@@ -444,6 +473,12 @@ class Translator:
         return
 
     def this(self):
+        return
+    
+    def point(self):
+        return
+    
+    def space(self):
         return
 
 if __name__=="__main__":
