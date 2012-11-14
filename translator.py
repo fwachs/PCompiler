@@ -3,7 +3,7 @@ import aslex
 import asyacc
 
 class Translator:
-    passCount = 3
+    passCount = 4
     inferencer = None
     
     @staticmethod
@@ -19,7 +19,7 @@ class Translator:
         return tabs        
     
     def begin(self):
-        fname = 'projects/housewifewars/screen.as'
+        fname = 'projects/housewifewars/housewifewars.as'
         currentDir = fname[:fname.rfind(os.sep)+1]
 
         data = open(fname).read()
@@ -48,7 +48,7 @@ class Translator:
     def parseNode(self, node, scope = None):
         #print "*    ", node,'\n'
         
-        if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                    
+        if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                                
             cnt = 0
             for n in node[2]:            
                 sym = scope.findSymbol(n[1][1])
@@ -113,7 +113,7 @@ class Translator:
             methodSymbol = scope.findSymbol(node[1][1])
             
             print node[1][1]
-
+                
             T = 'None'
             if node[1][0] == 'access':                    
                 T = self.parseNode(node[1][1], scope)
@@ -122,7 +122,9 @@ class Translator:
                 if not clsScope:
                     clsScope = scope
                 T = self.parseNode(node[1][2][1], clsScope)
-                methodSymbol = clsScope.findSymbol(node[1][1])             
+                methodSymbol = clsScope.findSymbol(node[1][2][1][1])             
+                if self.passCount == 1:
+                    self.passCount = 1;
             else:
                 T = self.parseNode(node[1], scope)
                
