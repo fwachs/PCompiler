@@ -3,8 +3,10 @@ import aslex
 import asyacc
 
 class Translator:
-    passCount = 4
+    passCount = 10
     inferencer = None
+    programs = {}
+    currentFileName = ''
     
     @staticmethod
     def createTranslator(translatorType):
@@ -19,34 +21,71 @@ class Translator:
         return tabs        
     
     def begin(self):
-        fname = 'projects/housewifewars/housewifewars.as'
-        currentDir = fname[:fname.rfind(os.sep)+1]
-
-        data = open(fname).read()
-        prog = asyacc.parse(data)
-    
-        tyinf = type_inference.TypeInferencer()        
-        tyinf.checkTypes(prog)
-        self.inferencer = tyinf
+        self.inferencer = type_inference.TypeInferencer()        
         
+        '''
         while self.passCount > 0:
-            self.compile(fname, prog, tyinf)
+            fname = 'projects/housewifewars/prueba.as'
+            if self.passCount == 10:
+                print 'Parsing file : %s'%(fname)
+                data = open(fname).read()    
+                prog = asyacc.parse(data)
+                self.programs[fname] = prog
+                self.inferencer.checkTypes(prog)
+            else:
+                self.compile(fname)
+            self.passCount -= 1
+        return
+        '''
+    
+        while self.passCount > 0:
+            print "Pass: ", self.passCount
+            errors = 0
+            for dirname, dirnames, filenames in os.walk('projects/housewifewars'):
+                for filename in filenames:
+                    if filename[-3:] == '.as':
+                        fname = '%s/%s'%(dirname, filename)
+
+                        if self.passCount == 10:
+                            print 'Parsing file : %s'%(fname)
+                            data = open(fname).read()    
+                            prog = asyacc.parse(data)
+                            self.programs[fname] = prog
+                            self.inferencer.checkTypes(self.programs[fname])
+                        elif self.passCount == 9:
+                            self.inferencer.checkTypes(self.programs[fname])
+                        else:
+                            errors += self.compile(fname)
+            print 'Total errors: ', errors
             self.passCount -= 1
         return
     
-    def compile(self, fname, prog, tyinf):
-        print 'Parsing file : %s'%(fname)
-
-        self.beginFile(fname)
+    def compile(self, fname):
+        print '\tTranslating file : %s'%(fname)
+            
+        errCount = 0
         
-        self.parseNode(prog[1], tyinf.symbolsStack)
+        self.currentFileName = fname
+        
+        prog = self.programs[fname]
+        
+        self.beginFile(fname)
+    
+        self.parseNode(prog[1], self.inferencer.symbolsStack)
+
+        self.endFile()
+            
+        try:
+            x = 0
+        except Exception, err:
+            errCount += 1
+            print "\t\tError: ", err
         #tyinf.dumpTree(prog)
         
-        self.endFile()
-        return
+        return errCount
     
     def parseNode(self, node, scope = None):
-        #print "*    ", node,'\n'
+        print "*", self.currentFileName, self.passCount, " -> ", node,'\n'
         
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                                
             cnt = 0
@@ -61,9 +100,9 @@ class Translator:
                 
                 if n[2]:
                     T = self.parseNode(n[2], scope)
-                    if T:
-                        n[1].append(T)                        
-                        sym.type = T
+                    if T and T.type:
+                        n[1].append(T.type)                        
+                        sym.type = T.type
                 else:
                     self.nullConstant()
                                             
@@ -72,8 +111,12 @@ class Translator:
                 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
             fnScope = scope.findSymbol(node[1])
-            
-            self.beginMethod(node)
+        
+            # To prevent Interfaces from failing
+            if not fnScope:    
+                return None
+        
+            self.beginMethod(node, fnScope.returnsVoid)
     
             if node[3]:
                 self.parseNode(node[3], fnScope)
@@ -82,12 +125,12 @@ class Translator:
             
         elif node[0] == 'clsdef':        
             if node[3]:
+                clsScope = scope.findSymbol(node[1])                
                 self.beginClass(node)
-                clsScope = scope.findSymbol(node[1])
                 self.inferencer.thisScope = clsScope 
                 self.parseNode(node[3], clsScope)
                 self.endClass(node)
-        elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]
+        elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]                
             self.newObjectBegin(node[1][1])    
             
             constructorSym = None
@@ -97,7 +140,7 @@ class Translator:
             for i in range(len(node[2])):                    
                 self.newObjectArgument(i)
                 Targ = self.parseNode(node[2][i], scope)
-                if Targ and constructorSym:
+                if Targ and constructorSym and constructorSym.symbol[2][1]:
                     signatureArg =  constructorSym.symbol[2][1][i]
                     signatureArg[0].append(Targ)
                     argSym = constructorSym.findSymbol(signatureArg[0][1])
@@ -105,30 +148,32 @@ class Translator:
                     
             self.newObjectEnd()
             
-            return node[1][1]                
+            return clsSym                
             
-        elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]
+        elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]                
             self.methodCallBegin()
                 
             methodSymbol = scope.findSymbol(node[1][1])
             
-            print node[1][1]
+            #print node[1][1]
                 
             T = 'None'
             if node[1][0] == 'access':                    
                 T = self.parseNode(node[1][1], scope)
                 self.space()
-                clsScope = self.inferencer.symbolsStack.findSymbol(T)
-                if not clsScope:
-                    clsScope = scope
-                T = self.parseNode(node[1][2][1], clsScope)
-                methodSymbol = clsScope.findSymbol(node[1][2][1][1])             
-                if self.passCount == 1:
-                    self.passCount = 1;
+
+                clsScope = scope
+                if T:
+                    clsScope = self.inferencer.symbolsStack.findSymbol(T.type)
+                
+                if clsScope:
+                    T = self.parseNode(node[1][2][1], clsScope)
+                    methodSymbol = clsScope.findSymbol(node[1][2][1][1])             
             else:
-                T = self.parseNode(node[1], scope)
+                glScope = self.inferencer.symbolsStack.findSymbol("Global")
+                T = self.parseNode(node[1], glScope)
                
-            if len(node[2]):
+            if len(node[2]) and methodSymbol and methodSymbol.symbol[2][1]:
                 for i in range(len(node[2])):                    
                     self.methodCallArgument(i)
                     Targ = self.parseNode(node[2][i], scope)
@@ -154,43 +199,60 @@ class Translator:
             
             self.retEnd()
             
-            if T:
-                scope.type = T
+            scope.returnsVoid = False
+            
+            if T and T.type:
+                scope.type = T.type
                 fnNode = scope.symbol
-                fnNode[2][2] = T
+                fnNode[2][2] = T.type
                 return T
 
         elif node[0] == 'id': #['id', 'a']
+            if node[2] == 486 and self.passCount == 7 and self.currentFileName == 'projects/housewifewars/controllers/gift_shop_controller.as':
+                x = 0
             idToFind = node[1]
             self.localId(idToFind)
             sym = scope.findSymbol(idToFind)
             if sym:
-                return sym.type
+                return sym
 
         elif node[0] == 'access':#['access', ['id', 'a'], ['[', [['i', '0']]] ]  #['access', ['this'], ['.', ['id', 'a']]]
             if node[2][0] == '[':
-                print 'access ['
-                self.parseNode(node[1], scope)            
-                self.parseNode(node[2][1][0], scope)
+                self.arrayAccessBegin()
+                
+                T = self.parseNode(node[1], scope)
+                
+                self.arrayAccessMiddle()            
+                
+                ret = None
+                if T and T.type:
+                    clsScope = self.inferencer.symbolsStack.findSymbol(T.type)
+                    if clsScope:
+                        ret = self.parseNode(node[2][1][0], clsScope)
+                
+                self.arrayAccessEnd()
+                
+                return ret
             else:
                 T = self.parseNode(node[1], scope)
+                
                 self.point()
-                clsScope = self.inferencer.symbolsStack.findSymbol(T)
-                if not clsScope:
-                    clsScope = scope
-                return self.parseNode(node[2][1], clsScope)
-        elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]
+                
+                if T and T.type:
+                    clsScope = self.inferencer.symbolsStack.findSymbol(T.type)
+                    if clsScope:
+                        return self.parseNode(node[2][1], clsScope)
+                
+        elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]            
             self.assignBegin()            
-            self.parseNode(node[2], scope)
+            assignee = self.parseNode(node[2], scope)
             
             self.assignMiddle(node[1])
             
             T = self.parseNode(node[3], scope)
-            if T:
-                sym = scope.findSymbol(node[2][1])
-                if sym:
-                    sym.symbol.append(T)
-                    sym.type = T
+            if T and T.type and assignee:
+                assignee.symbol.append(T.type)
+                assignee.type = T.type
             self.assignEnd()
         elif node[0] == 'uexp':
             if node[1] == '+':
@@ -204,11 +266,11 @@ class Translator:
                 T = self.parseNode(node[2], scope)
                 return T
             elif node[1] == '++':
-                T = self.parseNode(n, scope)
+                T = self.parseNode(node[1], scope)
                 self.unOp(node[1])
                 return T
             elif node[1] == '--':
-                T = self.parseNode(n, scope)
+                T = self.parseNode(node[1], scope)
                 self.unOp(node[1])
                 return T
             elif node[1] == '~':
@@ -231,17 +293,18 @@ class Translator:
         elif node[0] == 'i':        
             number = int(node[1])
             self.intConstant(number)
-            return 'int'
+            return self.inferencer.intSymbol
         elif node[0] == 'f':
             number = float(node[1])        
             self.floatConstant(number)
-            return 'float'
+            return self.inferencer.floatSymbol
         elif node[0] == 's':       
             self.stringConstant(node[1])
-            return 'string'
+            return self.inferencer.stringSymbol
         elif node[0] == 'array':
             for exp in node[1]:
-                self.parseNode(exp, scope)        
+                self.parseNode(exp, scope)
+            return self.inferencer.symbolsStack.findSymbol('Array')        
         elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],
             self.ifBegin()
     
@@ -319,12 +382,13 @@ class Translator:
             self.nullConstant()            
         elif node[0] == 'this':
             self.this()
-            return self.inferencer.thisScope.name
+            return self.inferencer.thisScope
         else:
             for n in node:
-                self.statementBegin()
-                self.parseNode(n, scope)
-                self.statementEnd()
+                if isinstance(n, types.ListType):            
+                    self.statementBegin()
+                    self.parseNode(n, scope)
+                    self.statementEnd()
         return None
     
     def beginFile(self, fileName):
@@ -481,6 +545,15 @@ class Translator:
         return
     
     def space(self):
+        return
+    
+    def arrayAccessBegin(self):
+        return
+    
+    def arrayAccessMiddle(self):
+        return
+    
+    def arrayAccessEnd(self):
         return
 
 if __name__=="__main__":

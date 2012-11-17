@@ -12,6 +12,8 @@ class Symbol:
 class Scope(Symbol):
     children = []
     prevScope = None
+    returnsVoid = True
+    superScope = None
     
     def addScope(self, scope):
         scope.prevScope = self
@@ -26,13 +28,33 @@ class Scope(Symbol):
             if child.name == name:
                 return child
         
+        sym = None
         if self.prevScope:
-            return self.prevScope.findSymbol(name)
+            sym = self.prevScope.findSymbol(name)
+            
+        if not sym and self.superScope:
+            sym = self.superScope.findSymbol(name)
+            
+        return sym
         
 class TypeInferencer():
     symbolsStack = Scope('global', None)
     passCount = 3
     thisScope = None
+    intSymbol = None
+    floatSymbol = None
+    stringSymbol = None
+    
+    def __init__(self):
+        self.intSymbol = Symbol('int', 'int')
+        self.intSymbol.type = 'int'                     
+
+        self.floatSymbol = Symbol('float', 'float')
+        self.floatSymbol.type = 'float'
+                             
+        self.stringSymbol = Symbol('string', 'string')
+        self.stringSymbol.type = 'string'                     
+        return
     
     def tabString(self, depth):
         tabs = ''
@@ -71,6 +93,9 @@ class TypeInferencer():
         return
     
     def scanSymbols(self, prog):
+        if not prog:
+            return
+        
         for node in prog:
             self.scanNode(node, self.symbolsStack)
         return
@@ -82,6 +107,7 @@ class TypeInferencer():
                 symb = Symbol(d[1][1], d[1])                     
                 scope.addSymbol(symb)
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
+            print "\tFunction: ", node[1]
             fnScope = Scope(node[1], node)
             scope.addScope(fnScope)
             
@@ -95,6 +121,17 @@ class TypeInferencer():
                     self.scanNode(child, fnScope)
         elif node[0] == 'clsdef':        
             clsScope = Scope(node[1], node[1])
+            clsScope.type = node[1]
+
+            superName = ''
+            if node[2]:
+                if node[2][0]:
+                    clsScope.superScope = scope.findSymbol(node[2][0][1])
+                    superName = node[2][0][1]
+                #else <interface>
+
+            print "Class: ", node[1], "<", superName , ">"
+                
             scope.addScope(clsScope)
             for child in node[3]:
                 self.scanNode(child, clsScope)   

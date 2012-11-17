@@ -37,7 +37,10 @@ class TranslatorIOS(translator.Translator):
         return
     
     def endClass(self, node):
-        self.hFileHandler.write('@interface %s {\n%s}\n\n%s\n@end\n\n'%(self.className, self.hFileVarDefs, self.hFileMethodDefs))
+        extends = ' : NSObject'
+        if node[2] and node[2][0]:
+            extends = ' : %s'%(node[2][0][1])
+        self.hFileHandler.write('@interface %s%s {\n%s}\n\n%s\n@end\n\n'%(self.className, extends, self.hFileVarDefs, self.hFileMethodDefs))
         self.mFileHandler.write('%s@end\n\n'%(self.mFileMethodDefs))
         self.className = None
         self.methodName = None
@@ -54,12 +57,14 @@ class TranslatorIOS(translator.Translator):
             return 'int'
         elif itype == 'id':
             return 'id'
+        elif itype == 'void':
+            return 'void'
         elif not itype:
             return 'UNKNOWN_TYPE'
         else:
             return '%s *'%(itype)
     
-    def beginMethod(self, node):
+    def beginMethod(self, node, returnsVoid):
         if self.methodName == 'init':
             self.endMethod([0, 0])
                         
@@ -73,6 +78,9 @@ class TranslatorIOS(translator.Translator):
             
             signature = node[2][1]
             retType = node[2][2]
+            
+            if returnsVoid:
+                retType = 'void'
             
             if self.methodName == self.className:
                 self.methodName = 'init'
@@ -260,7 +268,7 @@ class TranslatorIOS(translator.Translator):
     
     def varDefBegin(self, name, itype, cnt):
         if not self.methodName:
-            self.beginMethod([0, 0])
+            self.beginMethod([0, 0], False)
                         
         if self.methodName == 'init':
             self.hFileVarDefs += '\t%s %s;\n'%(self.getNativeType(itype), name)
@@ -335,5 +343,17 @@ class TranslatorIOS(translator.Translator):
 
     def space(self):
         self.mFileMethodBody += ' '
+        return
+    
+    def arrayAccessBegin(self):
+        self.mFileMethodBody += '['
+        return
+    
+    def arrayAccessMiddle(self):
+        self.mFileMethodBody += ' objectAtIndex:'
+        return
+    
+    def arrayAccessEnd(self):
+        self.mFileMethodBody += ']'
         return
         
