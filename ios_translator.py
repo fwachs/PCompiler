@@ -7,11 +7,28 @@ class TranslatorIOS(translator.Translator):
     hFileMethodDefs = ''
     mFileMethodDefs = ''
     mFileMethodBody = ''
+    tempBodyBuf = []
     definedIds = []
     className = None
     methodName = None
     tabDepth = -1
     isInsideACall = False
+    
+    def addToMethodBody(self, text):
+        if len(self.tempBodyBuf) == 0:
+            self.mFileMethodBody += text
+        else:
+            self.tempBodyBuf[-1] += text
+        
+    def beginMethodBuffering(self):
+        self.tempBodyBuf.append('')
+        
+    def getCurrentBuff(self):
+        return self.tempBodyBuf.pop()
+        
+    def enMethodBuffering(self):
+        if len(self.tempBodyBuf) > 0:
+            self.mFileMethodBody += self.tempBodyBuf.pop()
         
     def beginFile(self, fileName):
         mFileName = fileName.replace('.as', '.m')
@@ -105,33 +122,33 @@ class TranslatorIOS(translator.Translator):
                     
         self.hFileMethodDefs += funcString + ';\n'
         
-        self.mFileMethodBody += funcString + '\n{\n'   
+        self.addToMethodBody(funcString + '\n{\n'   )
         
         if self.methodName == 'init':
             if signature:
-                self.mFileMethodBody += '\tself = [self init];\n'        
+                self.addToMethodBody('\tself = [self init];\n'        )
             else:
-                self.mFileMethodBody += '\tself = [super init];\n'        
-            self.mFileMethodBody += '\tif(self) {\n'        
+                self.addToMethodBody('\tself = [super init];\n'        )
+            self.addToMethodBody('\tif(self) {\n'        )
         return
     
     def emptyRet(self, node):
         self.statementBegin()
 
         if node[1] == 0:
-            self.mFileMethodBody += 'return self'
+            self.addToMethodBody('return self')
         else:
-            self.mFileMethodBody += 'return Nil'
+            self.addToMethodBody('return Nil')
             
         self.statementEnd()
         return
         
     def endMethod(self, node):
         if self.methodName == 'init':
-            self.mFileMethodBody += '\t}\n'        
-            self.mFileMethodBody += '\treturn self;\n'
+            self.addToMethodBody('\t}\n'        )
+            self.addToMethodBody('\treturn self;\n')
                     
-        self.mFileMethodBody += '}\n\n'
+        self.addToMethodBody('}\n\n')
         
         self.mFileHandler.write(self.mFileMethodBody)
         self.mFileMethodBody = ''
@@ -142,14 +159,14 @@ class TranslatorIOS(translator.Translator):
         return
     
     def localId(self, name):
-        self.mFileMethodBody += name
+        self.addToMethodBody(name)
         return
     
     def memberId(self, name):
         if name not in self.definedIds:
             self.definedIds.append(name)
         
-        self.mFileMethodBody += 'self.%s'%(name)
+        self.addToMethodBody('self.%s'%(name))
         return
     
     def staticMemberId(self, name):
@@ -160,71 +177,71 @@ class TranslatorIOS(translator.Translator):
         return
     
     def memberFunctionId(self, name):
-        self.mFileMethodBody += 'self %s'%(name)
+        self.addToMethodBody('self %s'%(name))
         return
     
     def staticFunctionId(self, name):
         return
     
     def methodCallBegin(self):
-        self.mFileMethodBody += '['
+        self.addToMethodBody('[')
         self.isInsideACall = True
         return
     
     def methodCallArgument(self, argIdx):
         self.isInsideACall = False
         if argIdx > 0:
-            self.mFileMethodBody += ' '
-        self.mFileMethodBody += 'WithArg%d:'%(argIdx)
+            self.addToMethodBody(' ')
+        self.addToMethodBody('WithArg%d:'%(argIdx))
         return
     
     def methodCallEnd(self):
         self.isInsideACall = False
-        self.mFileMethodBody += ']'
+        self.addToMethodBody(']')
         return
     
     def newObjectBegin(self, className):
-        self.mFileMethodBody += '[[alloc %s] init'%(className)
+        self.addToMethodBody('[[alloc %s] init'%(className))
         return
     
     def newObjectArgument(self, argIdx):
         if argIdx > 0:
-            self.mFileMethodBody += ' '
-        self.mFileMethodBody += 'WithArg%d:'%(argIdx)
+            self.addToMethodBody(' ')
+        self.addToMethodBody('WithArg%d:'%(argIdx))
         return
     
     def newObjectEnd(self):
-        self.mFileMethodBody += ']'
+        self.addToMethodBody(']')
         return
     
     def intConstant(self, intConst):
-        self.mFileMethodBody += '%d'%(intConst)
+        self.addToMethodBody('%d'%(intConst))
         return
     
     def floatConstant(self, floatConst):
-        self.mFileMethodBody += '%f'%(floatConst)
+        self.addToMethodBody('%f'%(floatConst))
         return
     
     def stringConstant(self, stringConst):
-        self.mFileMethodBody += '@' + stringConst
+        self.addToMethodBody('@' + stringConst)
         return
 
     def nullConstant(self):
-        self.mFileMethodBody += 'Nil'
+        self.addToMethodBody('Nil')
         return
         
     def assignBegin(self):
         return
     
     def assignMiddle(self, operator):
-        self.mFileMethodBody += ' %s '%(operator)
+        self.addToMethodBody(' %s '%(operator))
         return
     
     def assignEnd(self):
         return
     
     def retBegin(self):
-        self.mFileMethodBody += 'return '
+        self.addToMethodBody('return ')
         return
     
     def retEnd(self):
@@ -232,38 +249,38 @@ class TranslatorIOS(translator.Translator):
     
     def statementBegin(self):
         self.tabDepth += 1
-        self.mFileMethodBody += self.tabString(self.tabDepth)
+        self.addToMethodBody(self.tabString(self.tabDepth))
         return
     
     def statementEnd(self):
         self.tabDepth -= 1
         
         if self.methodName:
-            self.mFileMethodBody += ';\n'
+            self.addToMethodBody(';\n')
         return
     
     def ifBegin(self):
-        self.mFileMethodBody += 'if'
+        self.addToMethodBody('if')
         return
     
     def ifExpBegin(self):
-        self.mFileMethodBody += '('
+        self.addToMethodBody('(')
         return
     
     def ifExpEnd(self):
-        self.mFileMethodBody += ') {\n'
+        self.addToMethodBody(') {\n')
         return
     
     def ifElse(self, isSingleStatement):
         if isSingleStatement:
-            self.mFileMethodBody += self.tabString(self.tabDepth) + '} else '
+            self.addToMethodBody(self.tabString(self.tabDepth) + '} else ')
         else:
-            self.mFileMethodBody += self.tabString(self.tabDepth) + '} else {\n'
+            self.addToMethodBody(self.tabString(self.tabDepth) + '} else {\n')
         return
     
     def ifEnd(self, isSingleStatement):
         if not isSingleStatement:
-            self.mFileMethodBody += self.tabString(self.tabDepth) + '}'
+            self.addToMethodBody(self.tabString(self.tabDepth) + '}')
         return
     
     def varDefBegin(self, name, itype, cnt):
@@ -272,88 +289,109 @@ class TranslatorIOS(translator.Translator):
                         
         if self.methodName == 'init':
             self.hFileVarDefs += '\t%s %s;\n'%(self.getNativeType(itype), name)
-            self.mFileMethodBody += '\t\tself.%s = '%(name)
+            self.addToMethodBody('\t\tself.%s = '%(name))
         else:
             if cnt == 0:
-                self.mFileMethodBody += '%s '%(self.getNativeType(itype))
+                self.addToMethodBody('%s '%(self.getNativeType(itype)))
             else:
-                self.mFileMethodBody += ', '            
+                self.addToMethodBody(', '            )
                 
-            self.mFileMethodBody += '%s = '%(name)
+            self.addToMethodBody('%s = '%(name))
         return
     
     def varDefEnd(self):
         return
     
     def binOp(self, operator):
-        self.mFileMethodBody += ' %s '%(operator)
+        self.addToMethodBody(' %s '%(operator))
         return
     
     def unOp(self, operator):
-        self.mFileMethodBody += '%s'%(operator)
+        self.addToMethodBody('%s'%(operator))
         return
     
     def forBegin(self):
-        self.mFileMethodBody += 'for('        
+        self.addToMethodBody('for('        )
         return
     
     def forCondition(self):
-        self.mFileMethodBody += '; '        
+        self.addToMethodBody('; '        )
         return
     
     def forStep(self):
-        self.mFileMethodBody += '; '        
+        self.addToMethodBody('; '        )
         return
     
     def forBlock(self):
-        self.mFileMethodBody += ') {\n'        
+        self.addToMethodBody(') {\n'        )
         return
     
     def forEnd(self):
-        self.mFileMethodBody += self.tabString(self.tabDepth) + '}'
+        self.addToMethodBody(self.tabString(self.tabDepth) + '}')
         return
     
     def whileBegin(self):
-        self.mFileMethodBody += 'while('        
+        self.addToMethodBody('while('        )
         return
     
     def whileBlock(self):
-        self.mFileMethodBody += ') {\n'        
+        self.addToMethodBody(') {\n'        )
         return
     
     def whileEnd(self):
-        self.mFileMethodBody += self.tabString(self.tabDepth) + '}'
+        self.addToMethodBody(self.tabString(self.tabDepth) + '}')
         return
     
     def continueStmt(self):
-        self.mFileMethodBody += 'continue'
+        self.addToMethodBody('continue')
         return
     
     def breakStmt(self):
-        self.mFileMethodBody += 'break'
+        self.addToMethodBody('break')
         return
 
     def this(self):
-        self.mFileMethodBody += 'self'
+        self.addToMethodBody('self')
         return
 
     def point(self):
-        self.mFileMethodBody += '.'
+        self.addToMethodBody('.')
         return
 
     def space(self):
-        self.mFileMethodBody += ' '
+        self.addToMethodBody(' ')
         return
     
     def arrayAccessBegin(self):
-        self.mFileMethodBody += '['
+        self.addToMethodBody('[')
         return
     
     def arrayAccessMiddle(self):
-        self.mFileMethodBody += ' objectAtIndex:'
+        self.addToMethodBody(' objectAtIndex:')
         return
     
     def arrayAccessEnd(self):
-        self.mFileMethodBody += ']'
+        self.addToMethodBody(']')
+        return
+    
+    def arrayDefBegin(self):
+        self.addToMethodBody('[NSMutableArray arrayWithObjects:')
+        return
+
+    def arrayDefArgBegin(self):
+        self.beginMethodBuffering()
+        return
+        
+    def arrayDefArgEnd(self, argType):
+        if argType == 'int':
+            self.addToMethodBody('[NSNumber numberWithInt:%s], '%(self.getCurrentBuff()))
+        elif argType == 'float':
+            self.addToMethodBody('[NSNumber numberWithFloat:%s], '%(self.getCurrentBuff()))
+        else:
+            self.addToMethodBody('%s, '%(self.getCurrentBuff()))            
+        return
+
+    def arrayDefEnd(self):
+        self.addToMethodBody('Nil]')
         return
         

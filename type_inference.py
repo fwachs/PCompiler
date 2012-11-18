@@ -4,6 +4,8 @@ class Symbol:
     name = ''
     symbol = None
     type = None
+    isContainer = False
+    containerType = None
     
     def __init__(self, name, symbol):
         self.name = name
@@ -122,6 +124,7 @@ class TypeInferencer():
         elif node[0] == 'clsdef':        
             clsScope = Scope(node[1], node[1])
             clsScope.type = node[1]
+            clsScope.isContainer = True
 
             superName = ''
             if node[2]:

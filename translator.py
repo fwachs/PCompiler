@@ -85,7 +85,7 @@ class Translator:
         return errCount
     
     def parseNode(self, node, scope = None):
-        print "*", self.currentFileName, self.passCount, " -> ", node,'\n'
+        #print "*", self.currentFileName, self.passCount, " -> ", node,'\n'
         
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                                
             cnt = 0
@@ -140,9 +140,9 @@ class Translator:
             for i in range(len(node[2])):                    
                 self.newObjectArgument(i)
                 Targ = self.parseNode(node[2][i], scope)
-                if Targ and constructorSym and constructorSym.symbol[2][1]:
+                if Targ and Targ.type and constructorSym and constructorSym.symbol[2][1]:
                     signatureArg =  constructorSym.symbol[2][1][i]
-                    signatureArg[0].append(Targ)
+                    signatureArg[0].append(Targ.type)
                     argSym = constructorSym.findSymbol(signatureArg[0][1])
                     #argSym.type = Targ
                     
@@ -177,11 +177,11 @@ class Translator:
                 for i in range(len(node[2])):                    
                     self.methodCallArgument(i)
                     Targ = self.parseNode(node[2][i], scope)
-                    if Targ and methodSymbol:
+                    if Targ and Targ.type and methodSymbol:
                         signatureArg =  methodSymbol.symbol[2][1][i]
-                        signatureArg[0].append(Targ)
+                        signatureArg[0].append(Targ.type)
                         argSym = methodSymbol.findSymbol(signatureArg[0][1])
-                        argSym.type = Targ
+                        argSym.type = Targ.type
             
             self.methodCallEnd()
             
@@ -251,8 +251,16 @@ class Translator:
             
             T = self.parseNode(node[3], scope)
             if T and T.type and assignee:
-                assignee.symbol.append(T.type)
-                assignee.type = T.type
+                if node[2][0] == 'access' and node[2][2][0] == '[':
+                    assignee.containerType = T.type
+                else:
+                    if T.isContainer and T.containerType:
+                        assignee.symbol.append(T.type + ':' + T.containerType)
+                        assignee.containerType = T.containerType
+                        assignee.type = T.type + ':' + T.containerType
+                    else:
+                        assignee.symbol.append(T.type)
+                        assignee.type = T.type
             self.assignEnd()
         elif node[0] == 'uexp':
             if node[1] == '+':
@@ -302,9 +310,18 @@ class Translator:
             self.stringConstant(node[1])
             return self.inferencer.stringSymbol
         elif node[0] == 'array':
+            self.arrayDefBegin()
+            argT = None
             for exp in node[1]:
-                self.parseNode(exp, scope)
-            return self.inferencer.symbolsStack.findSymbol('Array')        
+                self.arrayDefArgBegin()
+                argT = self.parseNode(exp, scope)
+                self.arrayDefArgEnd(argT.type)
+            retT = copy.deepcopy(self.inferencer.symbolsStack.findSymbol('Array'))
+            if argT and retT and retT.type:
+                retT.containerType = argT.type
+            self.arrayDefEnd()
+            return retT
+                    
         elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],
             self.ifBegin()
     
@@ -554,6 +571,18 @@ class Translator:
         return
     
     def arrayAccessEnd(self):
+        return
+
+    def arrayDefBegin(self):
+        return
+
+    def arrayDefArgBegin(self):
+        return
+    
+    def arrayDefArgEnd(self, argType):
+        return
+
+    def arrayDefEnd(self):
         return
 
 if __name__=="__main__":
