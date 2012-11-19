@@ -3,7 +3,8 @@ import aslex
 import asyacc
 
 class Translator:
-    passCount = 10
+    passCount = 0
+    maxPasses = 6
     inferencer = None
     programs = {}
     currentFileName = ''
@@ -24,9 +25,9 @@ class Translator:
         self.inferencer = type_inference.TypeInferencer()        
         
         '''
-        while self.passCount > 0:
+        while self.passCount < self.maxPasses:
             fname = 'projects/housewifewars/prueba.as'
-            if self.passCount == 10:
+            if self.passCount == 0:
                 print 'Parsing file : %s'%(fname)
                 data = open(fname).read()    
                 prog = asyacc.parse(data)
@@ -34,11 +35,11 @@ class Translator:
                 self.inferencer.checkTypes(prog)
             else:
                 self.compile(fname)
-            self.passCount -= 1
+            self.passCount += 1
         return
         '''
     
-        while self.passCount > 0:
+        while self.passCount < self.maxPasses:
             print "Pass: ", self.passCount
             errors = 0
             for dirname, dirnames, filenames in os.walk('projects/housewifewars'):
@@ -46,21 +47,23 @@ class Translator:
                     if filename[-3:] == '.as':
                         fname = '%s/%s'%(dirname, filename)
 
-                        if self.passCount == 10:
+                        if self.passCount == 0:
                             print 'Parsing file : %s'%(fname)
                             data = open(fname).read()    
                             prog = asyacc.parse(data)
                             self.programs[fname] = prog
                             self.inferencer.checkTypes(self.programs[fname])
-                        elif self.passCount == 9:
+                        elif self.passCount == 1:
                             self.inferencer.checkTypes(self.programs[fname])
                         else:
-                            errors += self.compile(fname)
+                            errors += self.compile(dirname, filename)
             print 'Total errors: ', errors
-            self.passCount -= 1
+            self.passCount += 1
         return
     
-    def compile(self, fname):
+    def compile(self, dirname, filename):
+        fname = '%s/%s'%(dirname, filename)
+        
         print '\tTranslating file : %s'%(fname)
             
         errCount = 0
@@ -69,7 +72,7 @@ class Translator:
         
         prog = self.programs[fname]
         
-        self.beginFile(fname)
+        self.beginFile(dirname, filename)
     
         self.parseNode(prog[1], self.inferencer.symbolsStack)
 
@@ -140,11 +143,13 @@ class Translator:
             for i in range(len(node[2])):                    
                 self.newObjectArgument(i)
                 Targ = self.parseNode(node[2][i], scope)
+                '''
                 if Targ and Targ.type and constructorSym and constructorSym.symbol[2][1]:
                     signatureArg =  constructorSym.symbol[2][1][i]
                     signatureArg[0].append(Targ.type)
                     argSym = constructorSym.findSymbol(signatureArg[0][1])
                     #argSym.type = Targ
+                '''
                     
             self.newObjectEnd()
             
@@ -152,11 +157,9 @@ class Translator:
             
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]                
             self.methodCallBegin()
-                
-            methodSymbol = scope.findSymbol(node[1][1])
+                            
+            methodSymbol = None
             
-            #print node[1][1]
-                
             T = 'None'
             if node[1][0] == 'access':                    
                 T = self.parseNode(node[1][1], scope)
@@ -167,10 +170,14 @@ class Translator:
                     clsScope = self.inferencer.symbolsStack.findSymbol(T.type)
                 
                 if clsScope:
+                    if node[1][2][1][1] == 'setEventHandler':
+                        x = 0
                     T = self.parseNode(node[1][2][1], clsScope)
                     methodSymbol = clsScope.findSymbol(node[1][2][1][1])             
             else:
                 glScope = self.inferencer.symbolsStack.findSymbol("Global")
+                methodSymbol = glScope.findSymbol(node[1][1])
+                self.localId('Global ')
                 T = self.parseNode(node[1], glScope)
                
             if len(node[2]) and methodSymbol and methodSymbol.symbol[2][1]:
@@ -208,9 +215,11 @@ class Translator:
                 return T
 
         elif node[0] == 'id': #['id', 'a']
-            if node[2] == 486 and self.passCount == 7 and self.currentFileName == 'projects/housewifewars/controllers/gift_shop_controller.as':
-                x = 0
+#            if node[2] == 486 and self.passCount == 7 and self.currentFileName == 'projects/housewifewars/controllers/gift_shop_controller.as':
+#                x = 0
             idToFind = node[1]
+            if idToFind == 'ret' and self.currentFileName == 'projects/housewifewars/models/darkside.as':
+                x = 0
             self.localId(idToFind)
             sym = scope.findSymbol(idToFind)
             if sym:
@@ -255,13 +264,17 @@ class Translator:
                     assignee.containerType = T.type
                 else:
                     if T.isContainer and T.containerType:
-                        assignee.symbol.append(T.type + ':' + T.containerType)
-                        assignee.containerType = T.containerType
-                        assignee.type = T.type + ':' + T.containerType
-                    else:
                         assignee.symbol.append(T.type)
+                        assignee.containerType = T.containerType
                         assignee.type = T.type
-            self.assignEnd()
+                    else:
+                        if not assignee.type:
+                            assignee.symbol.append(T.type)
+                            assignee.type = T.type
+                        elif assignee.type != T.type:
+                            self.assignEnd(T.type, assignee.type)
+                            return
+            self.assignEnd(None, None)
         elif node[0] == 'uexp':
             if node[1] == '+':
                 self.unOp(node[1])
@@ -293,11 +306,16 @@ class Translator:
             
             self.unOp(node[1])
             return T                        
-        elif node[0] == 'biexp':#['biexp', '*', ['i', '2'], ['i', '2']]        
-            self.parseNode(node[2], scope)
-            self.binOp(node[1])        
-            T = self.parseNode(node[3], scope)
-            return T            
+        elif node[0] == 'biexp':#['biexp', '*', ['i', '2'], ['i', '2']]
+            if node[4] == 143 and self.currentFileName == 'projects/housewifewars/models/darkside.as':
+                x = 0
+                
+            self.binOpBegin()        
+            Tto = self.parseNode(node[2], scope)
+            self.binOpOperand(node[1])        
+            Tfrom = self.parseNode(node[3], scope)
+            self.binOpEnd(node[1], Tfrom, Tto)        
+            return Tfrom            
         elif node[0] == 'i':        
             number = int(node[1])
             self.intConstant(number)
@@ -315,7 +333,10 @@ class Translator:
             for exp in node[1]:
                 self.arrayDefArgBegin()
                 argT = self.parseNode(exp, scope)
-                self.arrayDefArgEnd(argT.type)
+                at = None
+                if argT and argT.type:
+                    at = argT.type
+                self.arrayDefArgEnd(at)
             retT = copy.deepcopy(self.inferencer.symbolsStack.findSymbol('Array'))
             if argT and retT and retT.type:
                 retT.containerType = argT.type

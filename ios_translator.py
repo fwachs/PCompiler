@@ -1,4 +1,4 @@
-import types, copy, type_inference, translator 
+import types, copy, type_inference, translator, os 
 
 class TranslatorIOS(translator.Translator):
     mFileHandler = None
@@ -23,20 +23,24 @@ class TranslatorIOS(translator.Translator):
     def beginMethodBuffering(self):
         self.tempBodyBuf.append('')
         
-    def getCurrentBuff(self):
+    def popBuff(self):
         return self.tempBodyBuf.pop()
         
-    def enMethodBuffering(self):
+    def endMethodBuffering(self):
         if len(self.tempBodyBuf) > 0:
             self.mFileMethodBody += self.tempBodyBuf.pop()
         
-    def beginFile(self, fileName):
+    def beginFile(self, dirname, fileName):
+        
+        path = dirname.replace('projects/housewifewars', 'projects/housewifewars/ios')        
+        if not os.path.exists(path):
+            os.makedirs(path)
+        
         mFileName = fileName.replace('.as', '.m')
         hFileName = fileName.replace('.as', '.h')
-        path = ''
         
-        self.mFileHandler = open(path + mFileName, 'w+')
-        self.hFileHandler = open(path + hFileName, 'w+')
+        self.mFileHandler = open('%s/%s'%(path, mFileName), 'w+')
+        self.hFileHandler = open('%s/%s'%(path, hFileName), 'w+')
         return
     
     def endFile(self):
@@ -235,9 +239,19 @@ class TranslatorIOS(translator.Translator):
     
     def assignMiddle(self, operator):
         self.addToMethodBody(' %s '%(operator))
+        self.beginMethodBuffering()
         return
     
-    def assignEnd(self):
+    def assignEnd(self, fromType, toType):
+        if fromType != toType:
+            if toType == 'int':
+                self.addToMethodBody('[%s intValue]'%(self.popBuff()))
+                return
+            elif toType == 'float':
+                self.addToMethodBody('[%s floatValue]'%(self.popBuff()))
+                return
+
+        self.endMethodBuffering()
         return
     
     def retBegin(self):
@@ -302,8 +316,25 @@ class TranslatorIOS(translator.Translator):
     def varDefEnd(self):
         return
     
-    def binOp(self, operator):
-        self.addToMethodBody(' %s '%(operator))
+    def binOpBegin(self):
+        self.beginMethodBuffering()
+        return
+    
+    def binOpOperand(self, operator):
+        self.beginMethodBuffering()
+        return
+    
+    def binOpEnd(self, operator, fromType, toType):
+        
+        rightSide = self.popBuff()
+        leftSide = self.popBuff()
+                
+        if operator == '+' and toType:
+            if toType.type == 'string':
+                self.addToMethodBody('[%s stringByAppendingString:%s]'%(leftSide, rightSide))
+                return
+            
+        self.addToMethodBody('%s %s %s'%(leftSide, operator, rightSide))
         return
     
     def unOp(self, operator):
@@ -384,11 +415,11 @@ class TranslatorIOS(translator.Translator):
         
     def arrayDefArgEnd(self, argType):
         if argType == 'int':
-            self.addToMethodBody('[NSNumber numberWithInt:%s], '%(self.getCurrentBuff()))
+            self.addToMethodBody('[NSNumber numberWithInt:%s], '%(self.popBuff()))
         elif argType == 'float':
-            self.addToMethodBody('[NSNumber numberWithFloat:%s], '%(self.getCurrentBuff()))
+            self.addToMethodBody('[NSNumber numberWithFloat:%s], '%(self.popBuff()))
         else:
-            self.addToMethodBody('%s, '%(self.getCurrentBuff()))            
+            self.addToMethodBody('%s, '%(self.popBuff()))            
         return
 
     def arrayDefEnd(self):

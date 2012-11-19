@@ -110,21 +110,29 @@ class TypeInferencer():
                 scope.addSymbol(symb)
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
             print "\tFunction: ", node[1]
-            fnScope = Scope(node[1], node)
-            scope.addScope(fnScope)
+            fnScope = scope.findSymbol(node[1])
+            if not fnScope:
+                fnScope = Scope(node[1], node)
+                scope.addScope(fnScope)
             
-            if node[2][1]:
-                for arg in node[2][1]:
-                    sym = Symbol(arg[0][1], arg)
-                    fnScope.addSymbol(sym)
-                    
-            if node[3]:
-                for child in node[3]:
-                    self.scanNode(child, fnScope)
-        elif node[0] == 'clsdef':        
-            clsScope = Scope(node[1], node[1])
-            clsScope.type = node[1]
-            clsScope.isContainer = True
+                if node[2][1]:
+                    for arg in node[2][1]:
+                        sym = Symbol(arg[0][1], arg)
+                        fnScope.addSymbol(sym)
+                        
+                if node[3]:
+                    for child in node[3]:
+                        self.scanNode(child, fnScope)
+        elif node[0] == 'clsdef':
+            clsScope = scope.findSymbol(node[1])
+            if not clsScope:        
+                clsScope = Scope(node[1], node[1])
+                clsScope.type = node[1]
+                clsScope.isContainer = True
+                scope.addScope(clsScope)
+
+            if node[1] == 'DarkSideController':
+                x = 0
 
             superName = ''
             if node[2]:
@@ -135,7 +143,6 @@ class TypeInferencer():
 
             print "Class: ", node[1], "<", superName , ">"
                 
-            scope.addScope(clsScope)
             for child in node[3]:
                 self.scanNode(child, clsScope)   
         return
