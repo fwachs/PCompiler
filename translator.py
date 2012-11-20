@@ -127,14 +127,26 @@ class Translator:
             self.endMethod(node)
             
         elif node[0] == 'clsdef':        
+            if node[1] == 'HUDController':
+                x = 0            
+            
             if node[3]:
                 clsScope = scope.findSymbol(node[1])                
                 self.beginClass(node)
-                self.inferencer.thisScope = clsScope 
+                self.inferencer.thisScope = clsScope
+                 
+                if clsScope.superScope:
+                    for snode in clsScope.superScope.symbol[3]:
+                        if snode[0] == 'vardef':
+                            self.parseNode(snode, clsScope)
+                            
                 self.parseNode(node[3], clsScope)
-                self.endClass(node)
+                self.endClass(node)                
         elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]                
             self.newObjectBegin(node[1][1])    
+            
+            if node[1][1] == 'HUDController':
+                x = 0
             
             constructorSym = None
             clsSym = self.inferencer.symbolsStack.findSymbol(node[1][1])
@@ -143,13 +155,11 @@ class Translator:
             for i in range(len(node[2])):                    
                 self.newObjectArgument(i)
                 Targ = self.parseNode(node[2][i], scope)
-                '''
                 if Targ and Targ.type and constructorSym and constructorSym.symbol[2][1]:
                     signatureArg =  constructorSym.symbol[2][1][i]
                     signatureArg[0].append(Targ.type)
                     argSym = constructorSym.findSymbol(signatureArg[0][1])
                     #argSym.type = Targ
-                '''
                     
             self.newObjectEnd()
             

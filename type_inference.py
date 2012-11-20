@@ -6,6 +6,7 @@ class Symbol:
     type = None
     isContainer = False
     containerType = None
+    isVar = False
     
     def __init__(self, name, symbol):
         self.name = name
@@ -24,18 +25,20 @@ class Scope(Symbol):
 
     def addSymbol(self, symbol):
         self.children.append(symbol)
-
-    def findSymbol(self, name):
+        
+    def findLocalSymbol(self, name):
         for child in self.children:
             if child.name == name:
                 return child
-        
-        sym = None
-        if self.prevScope:
+        return
+
+    def findSymbol(self, name):        
+        sym = self.findLocalSymbol(name)
+        if not sym and self.prevScope:
             sym = self.prevScope.findSymbol(name)
             
-        if not sym and self.superScope:
-            sym = self.superScope.findSymbol(name)
+        #if not sym and self.superScope:
+        #    sym = self.superScope.findSymbol(name)
             
         return sym
         
@@ -101,16 +104,29 @@ class TypeInferencer():
         for node in prog:
             self.scanNode(node, self.symbolsStack)
         return
-    
+
     def scanNode(self, node, scope):
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]        
             varDefs = node[2]
             for d in varDefs:
-                symb = Symbol(d[1][1], d[1])                     
-                scope.addSymbol(symb)
+                symb = scope.findLocalSymbol(d[1][1])
+                if not symb:
+                    symb = Symbol(d[1][1], d[1])
+                    symb.isVar = True                     
+                    scope.addSymbol(symb)
+                    
+            if scope.superScope:
+                for child in scope.superScope.children:
+                    if child.isVar:
+                        symb = scope.findLocalSymbol(child.name)
+                        if not symb:
+                            symb = Symbol(child.name, child)
+                            symb.isVar = True                     
+                            scope.addSymbol(symb)
+
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
             print "\tFunction: ", node[1]
-            fnScope = scope.findSymbol(node[1])
+            fnScope = scope.findLocalSymbol(node[1])
             if not fnScope:
                 fnScope = Scope(node[1], node)
                 scope.addScope(fnScope)
@@ -124,20 +140,24 @@ class TypeInferencer():
                     for child in node[3]:
                         self.scanNode(child, fnScope)
         elif node[0] == 'clsdef':
+            if node[1] == 'HUDController':
+                x = 0
+
             clsScope = scope.findSymbol(node[1])
             if not clsScope:        
-                clsScope = Scope(node[1], node[1])
+                clsScope = Scope(node[1], node)
                 clsScope.type = node[1]
                 clsScope.isContainer = True
                 scope.addScope(clsScope)
 
-            if node[1] == 'DarkSideController':
-                x = 0
-
             superName = ''
             if node[2]:
                 if node[2][0]:
-                    clsScope.superScope = scope.findSymbol(node[2][0][1])
+                    superScope = scope.findSymbol(node[2][0][1])
+                    if superScope:
+                        clsScope.superScope = superScope
+                        for child in superScope.children:
+                            clsScope.addSymbol(child)
                     superName = node[2][0][1]
                 #else <interface>
 
