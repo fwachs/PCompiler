@@ -140,7 +140,7 @@ class TypeInferencer():
                     for child in node[3]:
                         self.scanNode(child, fnScope)
         elif node[0] == 'clsdef':
-            if node[1] == 'HUDController':
+            if node[1] == 'Ctrl1':
                 x = 0
 
             clsScope = scope.findSymbol(node[1])

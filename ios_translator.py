@@ -385,6 +385,10 @@ class TranslatorIOS(translator.Translator):
         self.addToMethodBody('self')
         return
 
+    def super(self):
+        self.addToMethodBody('super')
+        return
+
     def point(self):
         self.addToMethodBody('.')
         return

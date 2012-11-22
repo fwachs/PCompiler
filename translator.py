@@ -25,16 +25,24 @@ class Translator:
         self.inferencer = type_inference.TypeInferencer()        
         
         '''
+        errors = 0
+        filename = 'prueba.as'
+        dirname = 'projects/housewifewars'
+        fname = '%s/%s'%(dirname, filename)
         while self.passCount < self.maxPasses:
-            fname = 'projects/housewifewars/prueba.as'
+            print "Pass: ", self.passCount
+
             if self.passCount == 0:
                 print 'Parsing file : %s'%(fname)
                 data = open(fname).read()    
                 prog = asyacc.parse(data)
                 self.programs[fname] = prog
-                self.inferencer.checkTypes(prog)
+                self.inferencer.checkTypes(self.programs[fname])
+            elif self.passCount == 1:
+                self.inferencer.checkTypes(self.programs[fname])
             else:
-                self.compile(fname)
+                errors += self.compile(dirname, filename)
+            print 'Total errors: ', errors
             self.passCount += 1
         return
         '''
@@ -204,7 +212,10 @@ class Translator:
             
             return T
         elif node[0] == 'super':
-            return     
+            superConstructor = self.inferencer.thisScope.superScope.findLocalSymbol(self.inferencer.thisScope.superScope.name)
+            self.parseNode(superConstructor.symbol[3], scope)
+            #self.super()
+            return self.inferencer.thisScope     
         elif node[0] == 'ret':
             self.retBegin()
             
@@ -587,6 +598,9 @@ class Translator:
         return
 
     def this(self):
+        return
+    
+    def super(self):
         return
     
     def point(self):
