@@ -13,6 +13,8 @@ class TranslatorIOS(translator.Translator):
     methodName = None
     tabDepth = -1
     isInsideACall = False
+    localVars = None
+    iVars = None
     
     def addToMethodBody(self, text):
         if len(self.tempBodyBuf) == 0:
@@ -55,10 +57,12 @@ class TranslatorIOS(translator.Translator):
         self.className = node[1]
         
         self.mFileHandler.write('@implementation %s\n\n'%(self.className))
+        
+        self.iVars = {}
         return
     
     def endClass(self, node):
-        extends = ' : NSObject'
+        extends = ' : MutntObject'
         if node[2] and node[2][0]:
             extends = ' : %s'%(node[2][0][1])
         self.hFileHandler.write('@interface %s%s {\n%s}\n\n%s\n@end\n\n'%(self.className, extends, self.hFileVarDefs, self.hFileMethodDefs))
@@ -72,87 +76,54 @@ class TranslatorIOS(translator.Translator):
         return
     
     def getNativeType(self, itype):
-        if itype == 'string':
-            return 'NSString *'
-        elif itype == 'int':
-            return 'int'
-        elif itype == 'id':
-            return 'id'
-        elif itype == 'void':
-            return 'void'
-        elif not itype:
-            return 'UNKNOWN_TYPE'
-        else:
-            return '%s *'%(itype)
+        return 'MutntObj *'
     
     def beginMethod(self, node, returnsVoid):
         if self.methodName == 'init':
             self.endMethod([0, 0])
                         
         funcString = ''
-        signature = None
         if node[1] == 0:
             funcString = '- (id)init'
             self.methodName = 'init'
         else:
             self.methodName = node[1]
-            
-            signature = node[2][1]
-            retType = node[2][2]
-            
-            if returnsVoid:
-                retType = 'void'
-            
-            if self.methodName == self.className:
-                self.methodName = 'init'
-                retType = 'id'
-        
-            funcString = '- (%s)%s'%(self.getNativeType(retType), self.methodName)
-            if signature != None:
-                    
-                funcString = '- (%s)%s'%(self.getNativeType(retType), self.methodName)
-                if len(signature):
-                    idx = 0
-                    for arg in signature:
-                        argType = ''
-                        if len(arg[0]) > 3:
-                            argType = arg[0][3]
-                            
-                        funcString += 'WithArg%d:(%s)%s'%(idx, self.getNativeType(argType), arg[0][1])
-                        idx = idx + 1     
-                        if idx < len(signature):
-                            funcString += ' '
-                
+            funcString = '- (MuTntObj*)%s:(NSArray*)args'%(self.methodName)
+                                                    
                     
         self.hFileMethodDefs += funcString + ';\n'
+        self.addToMethodBody(funcString + '\n{\n')
+
+        if node[1] != 0:
+            signature = node[2][1]
+            
+            idx = 0
+            if signature != None:                    
+                if len(signature):
+                    for arg in signature:
+                        self.addToMethodBody('\tMuTntObj *%s = [args objectAtIndex:%d];\n'%(arg[0][1], idx))
+                        idx += 1
+                self.addToMethodBody('\n')
         
-        self.addToMethodBody(funcString + '\n{\n'   )
-        
+        '''
         if self.methodName == 'init':
             if signature:
                 self.addToMethodBody('\tself = [self init];\n'        )
             else:
                 self.addToMethodBody('\tself = [super init];\n'        )
             self.addToMethodBody('\tif(self) {\n'        )
+        '''
         return
     
     def emptyRet(self, node):
-        self.statementBegin()
-
-        if node[1] == 0:
-            self.addToMethodBody('return self')
-        else:
-            self.addToMethodBody('return Nil')
-            
-        self.statementEnd()
         return
         
     def endMethod(self, node):
         if self.methodName == 'init':
-            self.addToMethodBody('\t}\n'        )
+            self.addToMethodBody('\t}\n')
             self.addToMethodBody('\treturn self;\n')
                     
-        self.addToMethodBody('}\n\n')
+        self.addToMethodBody('\treturn [MuTntObj nullObject];\n}\n\n')
         
         self.mFileHandler.write(self.mFileMethodBody)
         self.mFileMethodBody = ''
@@ -192,16 +163,19 @@ class TranslatorIOS(translator.Translator):
         self.isInsideACall = True
         return
     
+    def methodCallBeginArgs(self, argCnt):
+        self.beginMethodBuffering()
+        self.addToMethodBody('[NSArray arrayWithObjects:')
+        return
+        
     def methodCallArgument(self, argIdx):
         self.isInsideACall = False
-        if argIdx > 0:
-            self.addToMethodBody(' ')
-        self.addToMethodBody('WithArg%d:'%(argIdx))
+        self.addToMethodBody(', ')
         return
     
-    def methodCallEnd(self):
+    def methodCallEnd(self, name):
         self.isInsideACall = False
-        self.addToMethodBody(']')
+        self.addToMethodBody(' performSelector:@selector(%s:) withObject:%sNil]]'%(name, self.popBuff()))
         return
     
     def newObjectBegin(self, className):
@@ -219,15 +193,15 @@ class TranslatorIOS(translator.Translator):
         return
     
     def intConstant(self, intConst):
-        self.addToMethodBody('%d'%(intConst))
+        self.addToMethodBody('[MuTntObj objectWithInt:%d]'%(intConst))
         return
     
     def floatConstant(self, floatConst):
-        self.addToMethodBody('%f'%(floatConst))
+        self.addToMethodBody('[MuTntObj objectWithFloat:%f]'%(floatConst))
         return
     
     def stringConstant(self, stringConst):
-        self.addToMethodBody('@' + stringConst)
+        self.addToMethodBody('[MuTntObj objectWithString:@%s]'%(stringConst))
         return
 
     def nullConstant(self):
@@ -258,7 +232,9 @@ class TranslatorIOS(translator.Translator):
         self.addToMethodBody('return ')
         return
     
-    def retEnd(self):
+    def retEnd(self, node):
+        if not node:
+            self.addToMethodBody('[MuTntObj nullObject]')
         return
     
     def statementBegin(self):
@@ -308,7 +284,7 @@ class TranslatorIOS(translator.Translator):
             if cnt == 0:
                 self.addToMethodBody('%s '%(self.getNativeType(itype)))
             else:
-                self.addToMethodBody(', '            )
+                self.addToMethodBody(', ')
                 
             self.addToMethodBody('%s = '%(name))
         return
@@ -328,13 +304,38 @@ class TranslatorIOS(translator.Translator):
         
         rightSide = self.popBuff()
         leftSide = self.popBuff()
-                
-        if operator == '+' and toType:
-            if toType.type == 'string':
-                self.addToMethodBody('[%s stringByAppendingString:%s]'%(leftSide, rightSide))
-                return
             
-        self.addToMethodBody('%s %s %s'%(leftSide, operator, rightSide))
+        methodName = ''    
+        if operator == '+':
+            methodName = 'add'
+        elif operator == '-':
+            methodName = 'sub'
+        elif operator == '*':
+            methodName = 'mul'
+        elif operator == '/':
+            methodName = 'div'
+        elif operator == '%':
+            methodName = 'reminder'
+        elif operator == '==':
+            methodName = 'isEqual'
+        elif operator == '>':
+            methodName = 'isGreater'
+        elif operator == '>=':
+            methodName = 'isGreaterOrEqual'
+        elif operator == '<':
+            methodName = 'isLess'
+        elif operator == '<=':
+            methodName = 'isLessOrEqual'
+        elif operator == '|':
+            methodName = 'bitwiseOr'
+        elif operator == '&':
+            methodName = 'bitwiseAnd'
+        elif operator == '||':
+            methodName = 'logicalOr'
+        elif operator == '&&':
+            methodName = 'logicalAnd'
+            
+        self.addToMethodBody('[%s %s:%s]'%(leftSide, methodName, rightSide))
         return
     
     def unOp(self, operator):
@@ -342,19 +343,19 @@ class TranslatorIOS(translator.Translator):
         return
     
     def forBegin(self):
-        self.addToMethodBody('for('        )
+        self.addToMethodBody('for(')
         return
     
     def forCondition(self):
-        self.addToMethodBody('; '        )
+        self.addToMethodBody('; ')
         return
     
     def forStep(self):
-        self.addToMethodBody('; '        )
+        self.addToMethodBody('; ')
         return
     
     def forBlock(self):
-        self.addToMethodBody(') {\n'        )
+        self.addToMethodBody(') {\n')
         return
     
     def forEnd(self):
@@ -362,11 +363,11 @@ class TranslatorIOS(translator.Translator):
         return
     
     def whileBegin(self):
-        self.addToMethodBody('while('        )
+        self.addToMethodBody('while(')
         return
     
     def whileBlock(self):
-        self.addToMethodBody(') {\n'        )
+        self.addToMethodBody(') {\n')
         return
     
     def whileEnd(self):

@@ -4,7 +4,7 @@ import asyacc
 
 class Translator:
     passCount = 0
-    maxPasses = 6
+    maxPasses = 3
     inferencer = None
     programs = {}
     currentFileName = ''
@@ -19,7 +19,25 @@ class Translator:
         for i in range(0, depth):
             tabs += '\t'
                     
-        return tabs        
+        return tabs
+            
+    def dumpTree(self, prog, tab = 0):
+        idx = 0        
+        for l in prog:
+            if isinstance(l, types.ListType):
+                print '%s(%d)['%(self.tabString(tab), idx)
+                self.dumpTree(l, tab + 1)
+                print self.tabString(tab) + ']'
+            elif l:
+                if isinstance(l, types.IntType):
+                    print '%s(%d) %d'%(self.tabString(tab), idx, l)                          
+                else:
+                    print '%s(%d) %s'%(self.tabString(tab), idx, l)
+            else:
+                print '%s(%d) None'%(self.tabString(tab), idx)
+                    
+            idx += 1                          
+        return  
     
     def begin(self):
         self.inferencer = type_inference.TypeInferencer()        
@@ -47,26 +65,18 @@ class Translator:
         return
         '''
     
-        while self.passCount < self.maxPasses:
-            print "Pass: ", self.passCount
-            errors = 0
-            for dirname, dirnames, filenames in os.walk('projects/housewifewars'):
-                for filename in filenames:
-                    if filename[-3:] == '.as':
-                        fname = '%s/%s'%(dirname, filename)
+        for dirname, dirnames, filenames in os.walk('projects/test'):
+            for filename in filenames:
+                if filename[-3:] == '.as':
+                    fname = '%s/%s'%(dirname, filename)
 
-                        if self.passCount == 0:
-                            print 'Parsing file : %s'%(fname)
-                            data = open(fname).read()    
-                            prog = asyacc.parse(data)
-                            self.programs[fname] = prog
-                            self.inferencer.checkTypes(self.programs[fname])
-                        elif self.passCount == 1:
-                            self.inferencer.checkTypes(self.programs[fname])
-                        else:
-                            errors += self.compile(dirname, filename)
-            print 'Total errors: ', errors
-            self.passCount += 1
+                    data = open(fname).read()    
+                    prog = asyacc.parse(data)
+                    self.dumpTree(prog)
+                    self.programs[fname] = prog
+                    self.compile(dirname, filename)
+                    
+        print "Done!"
         return
     
     def compile(self, dirname, filename):
@@ -82,7 +92,7 @@ class Translator:
         
         self.beginFile(dirname, filename)
     
-        self.parseNode(prog[1], self.inferencer.symbolsStack)
+        self.parseNode(prog[1])
 
         self.endFile()
             
@@ -95,25 +105,19 @@ class Translator:
         
         return errCount
     
-    def parseNode(self, node, scope = None):
+    def parseNode(self, node):
         #print "*", self.currentFileName, self.passCount, " -> ", node,'\n'
+        
+        if not node:
+            return
         
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                                
             cnt = 0
             for n in node[2]:            
-                sym = scope.findSymbol(n[1][1])
-                if not sym:
-                    sym = type_inference.Symbol(n[1][1], n)
-                    scope.addSymbol(sym)
-
-                T = sym.type
-                self.varDefBegin(n[1][1], T, cnt)
+                self.varDefBegin(n[1][1], None, cnt)
                 
                 if n[2]:
-                    T = self.parseNode(n[2], scope)
-                    if T and T.type:
-                        n[1].append(T.type)                        
-                        sym.type = T.type
+                    T = self.parseNode(n[2])
                 else:
                     self.nullConstant()
                                             
@@ -121,198 +125,114 @@ class Translator:
                 cnt += 1
                 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
-            fnScope = scope.findSymbol(node[1])
-        
-            # To prevent Interfaces from failing
-            if not fnScope:    
-                return None
-        
-            self.beginMethod(node, fnScope.returnsVoid)
+            self.beginMethod(node, False)
     
             if node[3]:
-                self.parseNode(node[3], fnScope)
+                self.parseNode(node[3])
                 
             self.endMethod(node)
             
         elif node[0] == 'clsdef':        
-            if node[1] == 'HUDController':
-                x = 0            
-            
             if node[3]:
-                clsScope = scope.findSymbol(node[1])                
                 self.beginClass(node)
-                self.inferencer.thisScope = clsScope
                  
-                if clsScope.superScope:
-                    for snode in clsScope.superScope.symbol[3]:
-                        if snode[0] == 'vardef':
-                            self.parseNode(snode, clsScope)
-                            
-                self.parseNode(node[3], clsScope)
+                self.parseNode(node[3])
+                
                 self.endClass(node)                
         elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]                
             self.newObjectBegin(node[1][1])    
             
-            if node[1][1] == 'HUDController':
-                x = 0
-            
-            constructorSym = None
-            clsSym = self.inferencer.symbolsStack.findSymbol(node[1][1])
-            if clsSym:
-                constructorSym = clsSym.findSymbol(node[1][1])
             for i in range(len(node[2])):                    
                 self.newObjectArgument(i)
-                Targ = self.parseNode(node[2][i], scope)
-                if Targ and Targ.type and constructorSym and constructorSym.symbol[2][1]:
-                    signatureArg =  constructorSym.symbol[2][1][i]
-                    signatureArg[0].append(Targ.type)
-                    argSym = constructorSym.findSymbol(signatureArg[0][1])
-                    #argSym.type = Targ
+                self.parseNode(node[2][i])
                     
             self.newObjectEnd()
-            
-            return clsSym                
             
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]                
             self.methodCallBegin()
                             
-            methodSymbol = None
-            
-            T = 'None'
+            methodNode = ''
             if node[1][0] == 'access':                    
-                T = self.parseNode(node[1][1], scope)
-                self.space()
-
-                clsScope = scope
-                if T:
-                    clsScope = self.inferencer.symbolsStack.findSymbol(T.type)
-                
-                if clsScope:
-                    if node[1][2][1][1] == 'setEventHandler':
-                        x = 0
-                    T = self.parseNode(node[1][2][1], clsScope)
-                    methodSymbol = clsScope.findSymbol(node[1][2][1][1])             
+                self.parseNode(node[1][1])
+                methodNode = node[1][2][1]
             else:
-                glScope = self.inferencer.symbolsStack.findSymbol("Global")
-                methodSymbol = glScope.findSymbol(node[1][1])
-                self.localId('Global ')
-                T = self.parseNode(node[1], glScope)
-               
-            if len(node[2]) and methodSymbol and methodSymbol.symbol[2][1]:
-                for i in range(len(node[2])):                    
+                self.this()
+                methodNode = node[1]
+
+            methodName = methodNode[1]
+
+            self.methodCallBeginArgs(len(node[2]));
+                           
+            if len(node[2]):
+                for i in range(len(node[2])):
+                    self.parseNode(node[2][i])
                     self.methodCallArgument(i)
-                    Targ = self.parseNode(node[2][i], scope)
-                    if Targ and Targ.type and methodSymbol:
-                        signatureArg =  methodSymbol.symbol[2][1][i]
-                        signatureArg[0].append(Targ.type)
-                        argSym = methodSymbol.findSymbol(signatureArg[0][1])
-                        argSym.type = Targ.type
             
-            self.methodCallEnd()
+            self.methodCallEnd(methodName)
             
-            return T
         elif node[0] == 'super':
-            superConstructor = self.inferencer.thisScope.superScope.findLocalSymbol(self.inferencer.thisScope.superScope.name)
-            self.parseNode(superConstructor.symbol[3], scope)
-            #self.super()
-            return self.inferencer.thisScope     
+            self.super()
+
         elif node[0] == 'ret':
             self.retBegin()
             
-            T = ''
             if node[1]:
-                T = self.parseNode(node[1][-1], scope)
-            else:
-                self.parseNode(['null'], scope)
+                self.parseNode(node[1][-1])
             
-            self.retEnd()
-            
-            scope.returnsVoid = False
-            
-            if T and T.type:
-                scope.type = T.type
-                fnNode = scope.symbol
-                fnNode[2][2] = T.type
-                return T
+            self.retEnd(node[1])
 
         elif node[0] == 'id': #['id', 'a']
-#            if node[2] == 486 and self.passCount == 7 and self.currentFileName == 'projects/housewifewars/controllers/gift_shop_controller.as':
-#                x = 0
             idToFind = node[1]
-            if idToFind == 'ret' and self.currentFileName == 'projects/housewifewars/models/darkside.as':
-                x = 0
             self.localId(idToFind)
-            sym = scope.findSymbol(idToFind)
-            if sym:
-                return sym
+            return idToFind
 
         elif node[0] == 'access':#['access', ['id', 'a'], ['[', [['i', '0']]] ]  #['access', ['this'], ['.', ['id', 'a']]]
             if node[2][0] == '[':
                 self.arrayAccessBegin()
                 
-                T = self.parseNode(node[1], scope)
+                T = self.parseNode(node[1])
                 
                 self.arrayAccessMiddle()            
                 
-                ret = None
-                if T and T.type:
-                    clsScope = self.inferencer.symbolsStack.findSymbol(T.type)
-                    if clsScope:
-                        ret = self.parseNode(node[2][1][0], clsScope)
+                ret = self.parseNode(node[2][1][0])
                 
                 self.arrayAccessEnd()
                 
                 return ret
             else:
-                T = self.parseNode(node[1], scope)
+                T = self.parseNode(node[1])
                 
                 self.point()
                 
-                if T and T.type:
-                    clsScope = self.inferencer.symbolsStack.findSymbol(T.type)
-                    if clsScope:
-                        return self.parseNode(node[2][1], clsScope)
+                return self.parseNode(node[2][1])
                 
         elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]            
             self.assignBegin()            
-            assignee = self.parseNode(node[2], scope)
+            self.parseNode(node[2])
             
             self.assignMiddle(node[1])
             
-            T = self.parseNode(node[3], scope)
-            if T and T.type and assignee:
-                if node[2][0] == 'access' and node[2][2][0] == '[':
-                    assignee.containerType = T.type
-                else:
-                    if T.isContainer and T.containerType:
-                        assignee.symbol.append(T.type)
-                        assignee.containerType = T.containerType
-                        assignee.type = T.type
-                    else:
-                        if not assignee.type:
-                            assignee.symbol.append(T.type)
-                            assignee.type = T.type
-                        elif assignee.type != T.type:
-                            self.assignEnd(T.type, assignee.type)
-                            return
+            T = self.parseNode(node[3])
+
             self.assignEnd(None, None)
+            
         elif node[0] == 'uexp':
             if node[1] == '+':
                 self.unOp(node[1])
                 
-                T = self.parseNode(node[2], scope)
+                T = self.parseNode(node[2])
                 return T
             elif node[1] == '-':
                 self.unOp(node[1])
                 
-                T = self.parseNode(node[2], scope)
+                T = self.parseNode(node[2])
                 return T
             elif node[1] == '++':
-                T = self.parseNode(node[1], scope)
+                T = self.parseNode(node[1])
                 self.unOp(node[1])
                 return T
             elif node[1] == '--':
-                T = self.parseNode(node[1], scope)
+                T = self.parseNode(node[1])
                 self.unOp(node[1])
                 return T
             elif node[1] == '~':
@@ -320,21 +240,18 @@ class Translator:
             elif node[1] == '!':
                 self.unOp(node[1])
                 
-                T = self.parseNode(node[2], scope)
+                T = self.parseNode(node[2])
                 return T
         elif node[0] == 'uexpop':
-            T = self.parseNode(node[2], scope)
+            T = self.parseNode(node[2])
             
             self.unOp(node[1])
             return T                        
         elif node[0] == 'biexp':#['biexp', '*', ['i', '2'], ['i', '2']]
-            if node[4] == 143 and self.currentFileName == 'projects/housewifewars/models/darkside.as':
-                x = 0
-                
             self.binOpBegin()        
-            Tto = self.parseNode(node[2], scope)
+            Tto = self.parseNode(node[2])
             self.binOpOperand(node[1])        
-            Tfrom = self.parseNode(node[3], scope)
+            Tfrom = self.parseNode(node[3])
             self.binOpEnd(node[1], Tfrom, Tto)        
             return Tfrom            
         elif node[0] == 'i':        
@@ -350,19 +267,11 @@ class Translator:
             return self.inferencer.stringSymbol
         elif node[0] == 'array':
             self.arrayDefBegin()
-            argT = None
             for exp in node[1]:
                 self.arrayDefArgBegin()
-                argT = self.parseNode(exp, scope)
-                at = None
-                if argT and argT.type:
-                    at = argT.type
-                self.arrayDefArgEnd(at)
-            retT = copy.deepcopy(self.inferencer.symbolsStack.findSymbol('Array'))
-            if argT and retT and retT.type:
-                retT.containerType = argT.type
+                self.parseNode(exp)
+                self.arrayDefArgEnd(None)
             self.arrayDefEnd()
-            return retT
                     
         elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],
             self.ifBegin()
@@ -370,64 +279,67 @@ class Translator:
             self.ifExpBegin()
             
             for exp in node[1]:
-                self.parseNode(exp, scope)
+                self.parseNode(exp)
             
             self.ifExpEnd()
                     
             if node[2]:
                 if isinstance(node[2][0], types.ListType):            
-                    r1 = self.parseNode(node[2], scope)        
+                    r1 = self.parseNode(node[2])        
                 else:
-                    r1 = self.parseNode([node[2]], scope)        
+                    r1 = self.parseNode([node[2]])        
             
             isSingleStatement = False
             if node[3]:
                 isSingleStatement = not (isinstance(node[3][0], types.ListType))
                 self.ifElse(isSingleStatement)
                 
-                r2 = self.parseNode(node[3], scope)         
+                r2 = self.parseNode(node[3])         
             
-            self.ifEnd(isSingleStatement)    
+            self.ifEnd(isSingleStatement)
+                
         elif node[0] == 'do': 
             pass
+        
         elif node[0] == 'while':        
             self.whileBegin()
             
             for exp in node[1]:
-                self.parseNode(exp, scope)
+                self.parseNode(exp)
                 
             self.whileBlock()
             if node[2]:
                 if isinstance(node[2][0], types.ListType):            
-                    r1 = self.parseNode(node[2], scope)        
+                    r1 = self.parseNode(node[2])        
                 else:
-                    r1 = self.parseNode([node[2]], scope)        
+                    r1 = self.parseNode([node[2]])        
                 
             self.whileEnd()
+            
         elif node[0] == 'for':
             self.forBegin()
             
             if node[1]:
-                self.parseNode(node[1], scope)
+                self.parseNode(node[1])
             
             self.forCondition()
             
             if node[2]:
                 for exp in node[2]:
-                    self.parseNode(exp, scope)
+                    self.parseNode(exp)
     
             self.forStep()
             
             if node[3]:
-                self.parseNode(node[3][0], scope)
+                self.parseNode(node[3][0])
             
             self.forBlock()
             
             if node[4]:
                 if isinstance(node[4][0], types.ListType):            
-                    r1 = self.parseNode(node[4], scope)        
+                    self.parseNode(node[4])        
                 else:
-                    r1 = self.parseNode([node[4]], scope)        
+                    self.parseNode([node[4]])        
                 
             self.forEnd()
             
@@ -446,7 +358,7 @@ class Translator:
             for n in node:
                 if isinstance(n, types.ListType):            
                     self.statementBegin()
-                    self.parseNode(n, scope)
+                    self.parseNode(n)
                     self.statementEnd()
         return None
     
