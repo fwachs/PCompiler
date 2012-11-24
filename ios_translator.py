@@ -4,6 +4,7 @@ class TranslatorIOS(translator.Translator):
     mFileHandler = None
     hFileHandler = None
     hFileVarDefs = ''
+    hFilePropDefs = ''
     hFileMethodDefs = ''
     mFileMethodDefs = ''
     mFileMethodBody = ''
@@ -43,6 +44,9 @@ class TranslatorIOS(translator.Translator):
         
         self.mFileHandler = open('%s/%s'%(path, mFileName), 'w+')
         self.hFileHandler = open('%s/%s'%(path, hFileName), 'w+')
+        
+        self.hFileHandler.write('#import <Foundation/Foundation.h>\n#import "proxy.h"\n\n')
+        self.mFileHandler.write('#import "%s"\n\n'%(hFileName))
         return
     
     def endFile(self):
@@ -58,25 +62,30 @@ class TranslatorIOS(translator.Translator):
         
         self.mFileHandler.write('@implementation %s\n\n'%(self.className))
         
-        self.iVars = {}
+        symbol = self.inferencer.symbolsStack.findSymbol(self.className)
+        for child in symbol.children:
+            if child.isVar:
+                self.mFileHandler.write('@synthesize %s;\n'%(child.name))
+        self.mFileHandler.write('\n')
         return
     
     def endClass(self, node):
-        extends = ' : MutntObject'
+        extends = ' : Proxy'
         if node[2] and node[2][0]:
             extends = ' : %s'%(node[2][0][1])
-        self.hFileHandler.write('@interface %s%s {\n%s}\n\n%s\n@end\n\n'%(self.className, extends, self.hFileVarDefs, self.hFileMethodDefs))
+        self.hFileHandler.write('@interface %s%s {\n%s}\n\n%s\n\n%s\n@end\n\n'%(self.className, extends, self.hFileVarDefs, self.hFilePropDefs, self.hFileMethodDefs))
         self.mFileHandler.write('%s@end\n\n'%(self.mFileMethodDefs))
         self.className = None
         self.methodName = None
         self.hFileVarDefs = ''
+        self.hFilePropDefs = ''
         self.hFileMethodDefs = ''
         self.mFileMethodDefs = ''
         self.mFileMethodBody = ''
         return
     
     def getNativeType(self, itype):
-        return 'MutntObj *'
+        return 'Proxy *'
     
     def beginMethod(self, node, returnsVoid):
         if self.methodName == 'init':
@@ -88,12 +97,14 @@ class TranslatorIOS(translator.Translator):
             self.methodName = 'init'
         else:
             self.methodName = node[1]
-            funcString = '- (MuTntObj*)%s:(NSArray*)args'%(self.methodName)
+            funcString = '- (Proxy*)%s:(NSArray*)args'%(self.methodName)
                                                     
                     
         self.hFileMethodDefs += funcString + ';\n'
+        #self.hFileMethodDefs += '@property (strong) Proxy *%s;\n'%(self.methodName)
         self.addToMethodBody(funcString + '\n{\n')
 
+        signature = None
         if node[1] != 0:
             signature = node[2][1]
             
@@ -101,18 +112,16 @@ class TranslatorIOS(translator.Translator):
             if signature != None:                    
                 if len(signature):
                     for arg in signature:
-                        self.addToMethodBody('\tMuTntObj *%s = [args objectAtIndex:%d];\n'%(arg[0][1], idx))
+                        self.addToMethodBody('\tProxy *%s = [args objectAtIndex:%d];\n'%(arg[0][1], idx))
                         idx += 1
                 self.addToMethodBody('\n')
         
-        '''
         if self.methodName == 'init':
             if signature:
-                self.addToMethodBody('\tself = [self init];\n'        )
+                self.addToMethodBody('\tself = [self init];\n')
             else:
-                self.addToMethodBody('\tself = [super init];\n'        )
-            self.addToMethodBody('\tif(self) {\n'        )
-        '''
+                self.addToMethodBody('\tself = [super init];\n')
+            self.addToMethodBody('\tif(self) {\n')
         return
     
     def emptyRet(self, node):
@@ -122,8 +131,12 @@ class TranslatorIOS(translator.Translator):
         if self.methodName == 'init':
             self.addToMethodBody('\t}\n')
             self.addToMethodBody('\treturn self;\n')
-                    
-        self.addToMethodBody('\treturn [MuTntObj nullObject];\n}\n\n')
+        elif self.methodName == self.className:
+            self.addToMethodBody('\treturn self;\n')
+        else:                        
+            self.addToMethodBody('\treturn [Proxy nullProxy];\n')
+        
+        self.addToMethodBody('}\n\n')
         
         self.mFileHandler.write(self.mFileMethodBody)
         self.mFileMethodBody = ''
@@ -179,29 +192,27 @@ class TranslatorIOS(translator.Translator):
         return
     
     def newObjectBegin(self, className):
-        self.addToMethodBody('[[alloc %s] init'%(className))
+        self.addToMethodBody('[[%s alloc] initWithArgs:[NSArray arrayWithObjects:'%(className))
         return
-    
+        
     def newObjectArgument(self, argIdx):
-        if argIdx > 0:
-            self.addToMethodBody(' ')
-        self.addToMethodBody('WithArg%d:'%(argIdx))
+        self.addToMethodBody(', ')
         return
     
     def newObjectEnd(self):
-        self.addToMethodBody(']')
+        self.addToMethodBody('Nil]]')
         return
     
     def intConstant(self, intConst):
-        self.addToMethodBody('[MuTntObj objectWithInt:%d]'%(intConst))
+        self.addToMethodBody('[Proxy proxyWithInt:%d]'%(intConst))
         return
     
     def floatConstant(self, floatConst):
-        self.addToMethodBody('[MuTntObj objectWithFloat:%f]'%(floatConst))
+        self.addToMethodBody('[Proxy proxyWithFloat:%f]'%(floatConst))
         return
     
     def stringConstant(self, stringConst):
-        self.addToMethodBody('[MuTntObj objectWithString:@%s]'%(stringConst))
+        self.addToMethodBody('[Proxy proxyWithString:@%s]'%(stringConst))
         return
 
     def nullConstant(self):
@@ -209,23 +220,34 @@ class TranslatorIOS(translator.Translator):
         return
         
     def assignBegin(self):
+        self.beginMethodBuffering()            
         return
     
-    def assignMiddle(self, operator):
-        self.addToMethodBody(' %s '%(operator))
+    def assignMiddle(self):
         self.beginMethodBuffering()
         return
     
-    def assignEnd(self, fromType, toType):
-        if fromType != toType:
-            if toType == 'int':
-                self.addToMethodBody('[%s intValue]'%(self.popBuff()))
-                return
-            elif toType == 'float':
-                self.addToMethodBody('[%s floatValue]'%(self.popBuff()))
-                return
+    def assignEnd(self, operator):
+        rightSide = self.popBuff()
+        leftSide = self.popBuff()
+        
+        self.addToMethodBody('%s %s %s'%(leftSide, operator, rightSide))
+        return
 
-        self.endMethodBuffering()
+    def arrayAssignBegin(self):
+        self.addToMethodBody('[')
+        return
+                            
+    def arrayAssignMiddle(self, operand):
+        self.addToMethodBody(' setProxy:')
+        return
+    
+    def arrayAssignIndex(self):
+        self.addToMethodBody(' atIndex:')
+        return
+    
+    def arrayAssignEnd(self):
+        self.addToMethodBody(']')
         return
     
     def retBegin(self):
@@ -234,7 +256,7 @@ class TranslatorIOS(translator.Translator):
     
     def retEnd(self, node):
         if not node:
-            self.addToMethodBody('[MuTntObj nullObject]')
+            self.addToMethodBody('[Proxy nullObject]')
         return
     
     def statementBegin(self):
@@ -279,12 +301,14 @@ class TranslatorIOS(translator.Translator):
                         
         if self.methodName == 'init':
             self.hFileVarDefs += '\t%s %s;\n'%(self.getNativeType(itype), name)
+            self.hFilePropDefs += '@property (strong) Proxy *%s;\n'%(name)
+
             self.addToMethodBody('\t\tself.%s = '%(name))
         else:
             if cnt == 0:
                 self.addToMethodBody('%s '%(self.getNativeType(itype)))
             else:
-                self.addToMethodBody(', ')
+                self.addToMethodBody(', *')
                 
             self.addToMethodBody('%s = '%(name))
         return
@@ -317,15 +341,15 @@ class TranslatorIOS(translator.Translator):
         elif operator == '%':
             methodName = 'reminder'
         elif operator == '==':
-            methodName = 'isEqual'
+            methodName = 'isEq'
         elif operator == '>':
-            methodName = 'isGreater'
+            methodName = 'isGt'
         elif operator == '>=':
-            methodName = 'isGreaterOrEqual'
+            methodName = 'isGtOrEq'
         elif operator == '<':
-            methodName = 'isLess'
+            methodName = 'isLe'
         elif operator == '<=':
-            methodName = 'isLessOrEqual'
+            methodName = 'isLeOrEq'
         elif operator == '|':
             methodName = 'bitwiseOr'
         elif operator == '&':
@@ -338,8 +362,23 @@ class TranslatorIOS(translator.Translator):
         self.addToMethodBody('[%s %s:%s]'%(leftSide, methodName, rightSide))
         return
     
-    def unOp(self, operator):
-        self.addToMethodBody('%s'%(operator))
+    def unOpBegin(self):
+        self.addToMethodBody('[')
+    
+    def unOpEnd(self, operator):
+        methodName = ''
+        if operator == '-':
+            methodName = 'neg'
+        elif operator == '+':
+            methodName = 'plus'
+        elif operator == '--':
+            methodName = 'dec'
+        if operator == '++':
+            methodName = 'inc'
+        if operator == '!':
+            methodName = 'not'
+            
+        self.addToMethodBody(' %s]'%(methodName))
         return
     
     def forBegin(self):
@@ -403,7 +442,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def arrayAccessMiddle(self):
-        self.addToMethodBody(' objectAtIndex:')
+        self.addToMethodBody(' setProxy:')
         return
     
     def arrayAccessEnd(self):
@@ -411,7 +450,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def arrayDefBegin(self):
-        self.addToMethodBody('[NSMutableArray arrayWithObjects:')
+        self.addToMethodBody('[[Array alloc] initWithArgs:[NSMutableArray arrayWithObjects:')
         return
 
     def arrayDefArgBegin(self):
@@ -428,6 +467,6 @@ class TranslatorIOS(translator.Translator):
         return
 
     def arrayDefEnd(self):
-        self.addToMethodBody('Nil]')
+        self.addToMethodBody('Nil]]')
         return
         

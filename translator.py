@@ -65,17 +65,26 @@ class Translator:
         return
         '''
     
-        for dirname, dirnames, filenames in os.walk('projects/test'):
-            for filename in filenames:
-                if filename[-3:] == '.as':
-                    fname = '%s/%s'%(dirname, filename)
-
-                    data = open(fname).read()    
-                    prog = asyacc.parse(data)
-                    self.dumpTree(prog)
-                    self.programs[fname] = prog
-                    self.compile(dirname, filename)
-                    
+    
+        while self.passCount < self.maxPasses:
+            print "Pass: ", self.passCount
+            for dirname, dirnames, filenames in os.walk('projects/test'):
+                for filename in filenames:
+                    if filename[-3:] == '.as':
+                        fname = '%s/%s'%(dirname, filename)
+    
+                        if self.passCount == 0:
+                            data = open(fname).read()    
+                            prog = asyacc.parse(data)
+                            self.dumpTree(prog)
+                            self.programs[fname] = prog
+                            self.inferencer.checkTypes(self.programs[fname])
+                        elif self.passCount == 1:
+                            self.inferencer.checkTypes(self.programs[fname])
+                        else:
+                            self.compile(dirname, filename)
+            self.passCount += 1
+            
         print "Done!"
         return
     
@@ -206,47 +215,31 @@ class Translator:
                 
                 return self.parseNode(node[2][1])
                 
-        elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]            
-            self.assignBegin()            
-            self.parseNode(node[2])
-            
-            self.assignMiddle(node[1])
-            
-            T = self.parseNode(node[3])
-
-            self.assignEnd(None, None)
+        elif node[0] == 'assign':#['assign', '=', ['id', 'a'], ['biexp', '*', ['id', 'a'], ['i', '2']]]
+            assignee = node[2]            
+            if assignee[0] == 'access' and assignee[2][0] == '[':
+                self.arrayAssignBegin()                        
+                self.parseNode(assignee[1])
+                self.arrayAssignMiddle(node[1])
+                self.parseNode(node[3])
+                self.arrayAssignIndex()
+                self.parseNode(assignee[2][1][0])
+                self.arrayAssignEnd()
+            else:
+                self.assignBegin()                        
+                self.parseNode(node[2])            
+                self.assignMiddle()            
+                self.parseNode(node[3])
+                self.assignEnd(node[1])
             
         elif node[0] == 'uexp':
-            if node[1] == '+':
-                self.unOp(node[1])
-                
-                T = self.parseNode(node[2])
-                return T
-            elif node[1] == '-':
-                self.unOp(node[1])
-                
-                T = self.parseNode(node[2])
-                return T
-            elif node[1] == '++':
-                T = self.parseNode(node[1])
-                self.unOp(node[1])
-                return T
-            elif node[1] == '--':
-                T = self.parseNode(node[1])
-                self.unOp(node[1])
-                return T
-            elif node[1] == '~':
-                print "Warning: ~ operator not supported"
-            elif node[1] == '!':
-                self.unOp(node[1])
-                
-                T = self.parseNode(node[2])
-                return T
+            self.unOpBegin()
+            self.parseNode(node[2])                
+            self.unOpEnd(node[1])
         elif node[0] == 'uexpop':
-            T = self.parseNode(node[2])
-            
-            self.unOp(node[1])
-            return T                        
+            self.unOpBegin()
+            self.parseNode(node[2])                
+            self.unOpEnd(node[1])
         elif node[0] == 'biexp':#['biexp', '*', ['i', '2'], ['i', '2']]
             self.binOpBegin()        
             Tto = self.parseNode(node[2])
