@@ -143,6 +143,8 @@ class Translator:
             
         elif node[0] == 'clsdef':        
             if node[3]:
+                self.inferencer.thisScope = self.inferencer.symbolsStack.findSymbol(node[1])
+                
                 self.beginClass(node)
                  
                 self.parseNode(node[3])
@@ -199,7 +201,7 @@ class Translator:
             if node[2][0] == '[':
                 self.arrayAccessBegin()
                 
-                T = self.parseNode(node[1])
+                self.parseNode(node[1])
                 
                 self.arrayAccessMiddle()            
                 
@@ -209,7 +211,7 @@ class Translator:
                 
                 return ret
             else:
-                T = self.parseNode(node[1])
+                self.parseNode(node[1])
                 
                 self.point()
                 
@@ -263,7 +265,7 @@ class Translator:
             for exp in node[1]:
                 self.arrayDefArgBegin()
                 self.parseNode(exp)
-                self.arrayDefArgEnd(None)
+                self.arrayDefArgEnd()
             self.arrayDefEnd()
                     
         elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],

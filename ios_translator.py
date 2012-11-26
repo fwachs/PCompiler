@@ -46,7 +46,7 @@ class TranslatorIOS(translator.Translator):
         self.hFileHandler = open('%s/%s'%(path, hFileName), 'w+')
         
         self.hFileHandler.write('#import <Foundation/Foundation.h>\n#import "proxy.h"\n\n')
-        self.mFileHandler.write('#import "%s"\n\n'%(hFileName))
+        self.mFileHandler.write('#import "%s"\n#import "types.h"\n\n'%(hFileName))
         return
     
     def endFile(self):
@@ -64,8 +64,7 @@ class TranslatorIOS(translator.Translator):
         
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         for child in symbol.children:
-            if child.isVar:
-                self.mFileHandler.write('@synthesize %s;\n'%(child.name))
+            self.mFileHandler.write('@synthesize %s;\n'%(child.name))
         self.mFileHandler.write('\n')
         return
     
@@ -73,8 +72,19 @@ class TranslatorIOS(translator.Translator):
         extends = ' : Proxy'
         if node[2] and node[2][0]:
             extends = ' : %s'%(node[2][0][1])
+
+        methodsDef = '\tNSMutableDictionary *newM = [NSMutableDictionary dictionaryWithDictionary:self.methods];\n'
+        methodsDef += '\t[newM setValuesForKeysWithDictionary:[NSDictionary dictionaryWithObjectsAndKeys:'
+        self.addToMethodBody('- (void)defineMethods\n{\n\t__weak typeof(self) weakSelf = self;\n\n\t[super defineMethods];\n\n');
+        symbol = self.inferencer.symbolsStack.findSymbol(self.className)
+        for child in symbol.children:
+            if not child.isVar:
+                self.addToMethodBody('\tself.%s = ^(Proxy *firstArg, ...)\n\t{\n\t\tva_list args;\n\t\tva_start(args, firstArg);\n\n\t\tProxy *ret = [weakSelf %s:firstArg args:args];\n\t\tva_end(args);\n\n\t\treturn ret;\n\t};\n\n'%(child.name, child.name))
+                methodsDef += 'self.%s, @"%s", '%(child.name, child.name)
+        self.addToMethodBody(methodsDef + 'Nil]];\n\tself.methods = newM;\n')
+    
         self.hFileHandler.write('@interface %s%s {\n%s}\n\n%s\n\n%s\n@end\n\n'%(self.className, extends, self.hFileVarDefs, self.hFilePropDefs, self.hFileMethodDefs))
-        self.mFileHandler.write('%s@end\n\n'%(self.mFileMethodDefs))
+        self.mFileHandler.write('%s\n%s}\n@end\n\n'%(self.mFileMethodDefs, self.mFileMethodBody))
         self.className = None
         self.methodName = None
         self.hFileVarDefs = ''
@@ -97,11 +107,9 @@ class TranslatorIOS(translator.Translator):
             self.methodName = 'init'
         else:
             self.methodName = node[1]
-            funcString = '- (Proxy*)%s:(NSArray*)args'%(self.methodName)
-                                                    
-                    
-        self.hFileMethodDefs += funcString + ';\n'
-        #self.hFileMethodDefs += '@property (strong) Proxy *%s;\n'%(self.methodName)
+            funcString = '- (Proxy *)%s:(Proxy *)firstArg args:(va_list)args'%(self.methodName)
+            self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(self.methodName)
+            
         self.addToMethodBody(funcString + '\n{\n')
 
         signature = None
@@ -112,7 +120,10 @@ class TranslatorIOS(translator.Translator):
             if signature != None:                    
                 if len(signature):
                     for arg in signature:
-                        self.addToMethodBody('\tProxy *%s = [args objectAtIndex:%d];\n'%(arg[0][1], idx))
+                        if idx == 0:
+                            self.addToMethodBody('\tProxy *%s = firstArg;\n'%(arg[0][1]))
+                        else:
+                            self.addToMethodBody('\tProxy *%s = va_arg(args, Proxy*);\n'%(arg[0][1]))
                         idx += 1
                 self.addToMethodBody('\n')
         
@@ -172,13 +183,12 @@ class TranslatorIOS(translator.Translator):
         return
     
     def methodCallBegin(self):
-        self.addToMethodBody('[')
+        self.addToMethodBody('((MethodCall)[')
         self.isInsideACall = True
         return
     
     def methodCallBeginArgs(self, argCnt):
         self.beginMethodBuffering()
-        self.addToMethodBody('[NSArray arrayWithObjects:')
         return
         
     def methodCallArgument(self, argIdx):
@@ -188,11 +198,11 @@ class TranslatorIOS(translator.Translator):
     
     def methodCallEnd(self, name):
         self.isInsideACall = False
-        self.addToMethodBody(' performSelector:@selector(%s:) withObject:%sNil]]'%(name, self.popBuff()))
+        self.addToMethodBody('.methods valueForKey:@"%s"])(%sNil)'%(name, self.popBuff()))
         return
     
     def newObjectBegin(self, className):
-        self.addToMethodBody('[[%s alloc] initWithArgs:[NSArray arrayWithObjects:'%(className))
+        self.addToMethodBody('((MethodCall)[[[%s alloc] init].methods valueForKey:@"%s"])('%(className, className))
         return
         
     def newObjectArgument(self, argIdx):
@@ -200,7 +210,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def newObjectEnd(self):
-        self.addToMethodBody('Nil]]')
+        self.addToMethodBody('Nil)')
         return
     
     def intConstant(self, intConst):
@@ -256,7 +266,7 @@ class TranslatorIOS(translator.Translator):
     
     def retEnd(self, node):
         if not node:
-            self.addToMethodBody('[Proxy nullObject]')
+            self.addToMethodBody('[Proxy nullProxy]')
         return
     
     def statementBegin(self):
@@ -442,7 +452,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def arrayAccessMiddle(self):
-        self.addToMethodBody(' setProxy:')
+        self.addToMethodBody(' proxyAtIndex:')
         return
     
     def arrayAccessEnd(self):
@@ -450,23 +460,18 @@ class TranslatorIOS(translator.Translator):
         return
     
     def arrayDefBegin(self):
-        self.addToMethodBody('[[Array alloc] initWithArgs:[NSMutableArray arrayWithObjects:')
+        self.addToMethodBody('[[[Array alloc] init] Array:')
         return
 
     def arrayDefArgBegin(self):
         self.beginMethodBuffering()
         return
         
-    def arrayDefArgEnd(self, argType):
-        if argType == 'int':
-            self.addToMethodBody('[NSNumber numberWithInt:%s], '%(self.popBuff()))
-        elif argType == 'float':
-            self.addToMethodBody('[NSNumber numberWithFloat:%s], '%(self.popBuff()))
-        else:
-            self.addToMethodBody('%s, '%(self.popBuff()))            
+    def arrayDefArgEnd(self):
+        self.addToMethodBody('%s, '%(self.popBuff()))            
         return
 
     def arrayDefEnd(self):
-        self.addToMethodBody('Nil]]')
+        self.addToMethodBody('Nil]')
         return
         
