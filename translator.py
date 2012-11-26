@@ -85,6 +85,8 @@ class Translator:
                             self.compile(dirname, filename)
             self.passCount += 1
             
+        self.done()
+        
         print "Done!"
         return
     
@@ -157,7 +159,7 @@ class Translator:
                 self.newObjectArgument(i)
                 self.parseNode(node[2][i])
                     
-            self.newObjectEnd()
+            self.newObjectEnd(len(node[2]))
             
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]                
             self.methodCallBegin()

@@ -57,6 +57,29 @@ class TranslatorIOS(translator.Translator):
         self.hFileHandler = None
         return
     
+    def done(self):
+        f = open('projects/test/CustomProxyProtocol.h', 'w+')
+        
+        f.write('#import <Foundation/Foundation.h>\n')
+        f.write('@protocol CustomProxyProtocol <NSObject>\n\n')
+                
+        for cls in self.inferencer.symbolsStack.children:
+            for child in cls.children:
+                if child.isVar:
+                    f.write('\t@property (strong) Proxy *%s;\n'%(child.name))
+                else:
+                    decor = '-'
+                    if child.isStatic:
+                        decor = '+'
+                    f.write('\t@property (strong) MethodCall %s;\n'%(child.name))
+                    f.write('\t%s (Proxy *)%s:(Proxy *)firstArg, ...;\n'%(decor, child.name))
+        
+        f.write('\n@end\n')
+        
+        f.close()
+                
+        return
+    
     def beginClass(self, node):
         self.className = node[1]
         
@@ -78,8 +101,12 @@ class TranslatorIOS(translator.Translator):
         self.addToMethodBody('- (void)defineMethods\n{\n\t__weak typeof(self) weakSelf = self;\n\n\t[super defineMethods];\n\n');
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         for child in symbol.children:
-            if not child.isVar:
-                self.addToMethodBody('\tself.%s = ^(Proxy *firstArg, ...)\n\t{\n\t\tva_list args;\n\t\tva_start(args, firstArg);\n\n\t\tProxy *ret = [weakSelf %s:firstArg args:args];\n\t\tva_end(args);\n\n\t\treturn ret;\n\t};\n\n'%(child.name, child.name))
+            if not child.isVar: 
+                selfTarget = 'weakSelf'
+                if child.isStatic:
+                    selfTarget = self.className
+                    
+                self.addToMethodBody('\tself.%s = ^(Proxy *firstArg, ...)\n\t{\n\t\tva_list args;\n\t\tva_start(args, firstArg);\n\n\t\tProxy *ret = [%s _%s:firstArg args:args];\n\t\tva_end(args);\n\n\t\treturn ret;\n\t};\n\n'%(child.name, selfTarget, child.name))
                 methodsDef += 'self.%s, @"%s", '%(child.name, child.name)
         self.addToMethodBody(methodsDef + 'Nil]];\n\tself.methods = newM;\n')
     
@@ -107,7 +134,16 @@ class TranslatorIOS(translator.Translator):
             self.methodName = 'init'
         else:
             self.methodName = node[1]
-            funcString = '- (Proxy *)%s:(Proxy *)firstArg args:(va_list)args'%(self.methodName)
+            
+            staticMode = '-'
+            if len(node) >= 5:
+                for decoration in node[4]:
+                    if decoration == 'static':
+                        staticMode = '+'
+                        self.inferencer.thisScope.findSymbol(self.methodName).isStatic = True
+                        break
+                
+            funcString = '%s (Proxy *)_%s:(Proxy *)firstArg args:(va_list)args'%(staticMode, self.methodName)
             self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(self.methodName)
             
         self.addToMethodBody(funcString + '\n{\n')
@@ -148,6 +184,14 @@ class TranslatorIOS(translator.Translator):
             self.addToMethodBody('\treturn [Proxy nullProxy];\n')
         
         self.addToMethodBody('}\n\n')
+
+        if self.methodName != 'init':
+            staticMode = '-'
+            sym = self.inferencer.thisScope.findSymbol(self.methodName)
+            if sym and sym.isStatic:
+                staticMode = '+'
+                
+            self.addToMethodBody('%s (Proxy *)%s:(Proxy *)firstArg, ...\n{\n\tva_list args;\n\tva_start(args, firstArg);\n\n\tProxy *ret = [self _%s:firstArg args:args];\n\n\tva_end(args);\n\n\treturn ret;\n}\n\n'%(staticMode, self.methodName, self.methodName))
         
         self.mFileHandler.write(self.mFileMethodBody)
         self.mFileMethodBody = ''
@@ -183,7 +227,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def methodCallBegin(self):
-        self.addToMethodBody('((MethodCall)[')
+        self.addToMethodBody('[')
         self.isInsideACall = True
         return
     
@@ -198,18 +242,21 @@ class TranslatorIOS(translator.Translator):
     
     def methodCallEnd(self, name):
         self.isInsideACall = False
-        self.addToMethodBody('.methods valueForKey:@"%s"])(%sNil)'%(name, self.popBuff()))
+        self.addToMethodBody(' %s:%sNil]'%(name, self.popBuff()))
         return
     
     def newObjectBegin(self, className):
-        self.addToMethodBody('((MethodCall)[[[%s alloc] init].methods valueForKey:@"%s"])('%(className, className))
+        self.addToMethodBody('[[%s alloc] init].%s('%(className, className))
         return
         
     def newObjectArgument(self, argIdx):
-        self.addToMethodBody(', ')
+        if argIdx > 0:
+            self.addToMethodBody(', ')
         return
     
-    def newObjectEnd(self):
+    def newObjectEnd(self, argsCount):
+        if argsCount > 0:
+            self.addToMethodBody(', ')
         self.addToMethodBody('Nil)')
         return
     

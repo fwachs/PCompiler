@@ -7,8 +7,9 @@ class Symbol:
     isContainer = False
     containerType = None
     isVar = False
+    isStatic = False
     
-    def __init__(self, name, symbol):
+    def __init__(self, name, symbol, isVar = False, isStatic = False):
         self.name = name
         self.symbol = symbol
 
@@ -59,6 +60,29 @@ class TypeInferencer():
                              
         self.stringSymbol = Symbol('string', 'string')
         self.stringSymbol.type = 'string'                     
+
+        nativeScope = Scope('native', None)
+        self.symbolsStack.addScope(nativeScope)
+
+        nativeScope.addSymbol(Symbol('addsprite', None))
+        nativeScope.addSymbol(Symbol('pos', None))
+        nativeScope.addSymbol(Symbol('setevent', None))
+        nativeScope.addSymbol(Symbol('append', None))
+        nativeScope.addSymbol(Symbol('node2world', None))
+        nativeScope.addSymbol(Symbol('scale', None))
+        nativeScope.addSymbol(Symbol('stop', None))
+        nativeScope.addSymbol(Symbol('trace', None))
+        nativeScope.addSymbol(Symbol('addaction', None))
+        nativeScope.addSymbol(Symbol('repeat', None))
+        nativeScope.addSymbol(Symbol('sequence', None))
+        nativeScope.addSymbol(Symbol('moveto', None))
+        nativeScope.addSymbol(Symbol('scaleto', None))
+        nativeScope.addSymbol(Symbol('v_scale', None))
+        nativeScope.addSymbol(Symbol('getscene', None))
+        nativeScope.addSymbol(Symbol('rand', None))
+        nativeScope.addSymbol(Symbol('len', None))
+        nativeScope.addSymbol(Symbol('quitgame', None))
+        nativeScope.addSymbol(Symbol('str', None))
         return
     
     def tabString(self, depth):
