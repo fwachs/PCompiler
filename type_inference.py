@@ -8,6 +8,8 @@ class Symbol:
     containerType = None
     isVar = False
     isStatic = False
+    staticInitializer = ''
+    isGlobal = False
     
     def __init__(self, name, symbol, isVar = False, isStatic = False):
         self.name = name
@@ -130,13 +132,20 @@ class TypeInferencer():
         return
 
     def scanNode(self, node, scope):
-        if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]        
+        if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]
+            isStatic = False
+            if len(node) >= 5:
+                for decs in node[4]:
+                    if decs == 'static':
+                        isStatic = True
+                        
             varDefs = node[2]
             for d in varDefs:
                 symb = scope.findLocalSymbol(d[1][1])
                 if not symb:
                     symb = Symbol(d[1][1], d[1])
-                    symb.isVar = True                     
+                    symb.isVar = True
+                    symb.isStatic = isStatic                     
                     scope.addSymbol(symb)
                     
             if scope.superScope:
@@ -150,9 +159,16 @@ class TypeInferencer():
 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
             print "\tFunction: ", node[1]
+            isStatic = False
+            if len(node) >= 5:
+                for decs in node[4]:
+                    if decs == 'static':
+                        isStatic = True
+
             fnScope = scope.findLocalSymbol(node[1])
             if not fnScope:
                 fnScope = Scope(node[1], node)
+                fnScope.isStatic = isStatic
                 scope.addScope(fnScope)
             
                 if node[2][1]:

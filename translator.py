@@ -122,17 +122,27 @@ class Translator:
         if not node:
             return
         
-        if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]                                
+        if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]
+            isStatic = False
+            if len(node) >= 5:
+                for decs in node[4]:
+                    if decs == 'static':
+                        isStatic = True
+                                            
             cnt = 0
             for n in node[2]:            
-                self.varDefBegin(n[1][1], None, cnt)
+                sym = self.inferencer.thisScope.findSymbol(n[1][1])
+                if sym:
+                    sym.isStatic = isStatic
+                
+                self.varDefBegin(n[1][1], isStatic, cnt)
                 
                 if n[2]:
                     T = self.parseNode(n[2])
                 else:
                     self.nullConstant()
                                             
-                self.varDefEnd()
+                self.varDefEnd(sym)
                 cnt += 1
                 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
@@ -164,6 +174,7 @@ class Translator:
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]                
             self.methodCallBegin()
                             
+            isGlobal = False
             methodNode = ''
             if node[1][0] == 'access':                    
                 self.parseNode(node[1][1])
@@ -171,17 +182,23 @@ class Translator:
             else:
                 self.this()
                 methodNode = node[1]
+                if self.inferencer.thisScope:
+                    sym = self.inferencer.thisScope.findSymbol(methodNode[1])
+                else:
+                    sym = self.inferencer.symbolsStack.findSymbol(methodNode[1])                    
+                if sym and sym.isGlobal:
+                    isGlobal = True
 
             methodName = methodNode[1]
 
-            self.methodCallBeginArgs(len(node[2]));
+            self.methodCallBeginArgs(len(node[2]), isGlobal);
                            
             if len(node[2]):
                 for i in range(len(node[2])):
                     self.parseNode(node[2][i])
                     self.methodCallArgument(i)
             
-            self.methodCallEnd(methodName)
+            self.methodCallEnd(methodName, isGlobal)
             
         elif node[0] == 'super':
             self.super()
