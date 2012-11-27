@@ -163,15 +163,15 @@ def p_Inheritance_0(p):
 
 def p_Inheritance_1(p):
     'Inheritance : EXTENDS TypeExpression'
-    p[0] = [p[2],None]
+    p[0] = [['extends', p[2]],None]
 
 def p_Inheritance_2(p):
     'Inheritance : IMPLEMENTS TypeExpressionList'
-    p[0] = [None,p[2]]
+    p[0] = [None,['implements', p[2]]]
 
 def p_Inheritance_3(p):
     'Inheritance : EXTENDS TypeExpression IMPLEMENTS TypeExpressionList'
-    p[0] = [p[2],p[4]]
+    p[0] = [['extends', p[2]], ['implements', p[4]]]
 
 def p_TypeExpressionList_0(p):
     'TypeExpressionList : TypeExpression'

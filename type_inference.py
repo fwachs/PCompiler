@@ -11,15 +11,19 @@ class Symbol:
     staticInitializer = ''
     isGlobal = False
     
-    def __init__(self, name, symbol, isVar = False, isStatic = False):
+    def __init__(self, name, symbol, isVar = False, isStatic = False, isGlobal = False):
         self.name = name
         self.symbol = symbol
+        self.isVar = isVar
+        self.isStatic = isStatic
+        self.isGlobal = isGlobal
 
 class Scope(Symbol):
     children = []
     prevScope = None
     returnsVoid = True
     superScope = None
+    interfacesScope = []
     
     def addScope(self, scope):
         scope.prevScope = self
@@ -63,28 +67,29 @@ class TypeInferencer():
         self.stringSymbol = Symbol('string', 'string')
         self.stringSymbol.type = 'string'                     
 
-        nativeScope = Scope('native', None)
-        self.symbolsStack.addScope(nativeScope)
+        #nativeScope = Scope('native', None)
+        #self.symbolsStack.addScope(nativeScope)
+        nativeScope = self.symbolsStack
 
-        nativeScope.addSymbol(Symbol('addsprite', None))
-        nativeScope.addSymbol(Symbol('pos', None))
-        nativeScope.addSymbol(Symbol('setevent', None))
-        nativeScope.addSymbol(Symbol('append', None))
-        nativeScope.addSymbol(Symbol('node2world', None))
-        nativeScope.addSymbol(Symbol('scale', None))
-        nativeScope.addSymbol(Symbol('stop', None))
-        nativeScope.addSymbol(Symbol('trace', None))
-        nativeScope.addSymbol(Symbol('addaction', None))
-        nativeScope.addSymbol(Symbol('repeat', None))
-        nativeScope.addSymbol(Symbol('sequence', None))
-        nativeScope.addSymbol(Symbol('moveto', None))
-        nativeScope.addSymbol(Symbol('scaleto', None))
-        nativeScope.addSymbol(Symbol('v_scale', None))
-        nativeScope.addSymbol(Symbol('getscene', None))
-        nativeScope.addSymbol(Symbol('rand', None))
-        nativeScope.addSymbol(Symbol('len', None))
-        nativeScope.addSymbol(Symbol('quitgame', None))
-        nativeScope.addSymbol(Symbol('str', None))
+        nativeScope.addSymbol(Symbol('addsprite', None, False, False, False))
+        nativeScope.addSymbol(Symbol('pos', None, False, False, False))
+        nativeScope.addSymbol(Symbol('setevent', None, False, False, False))
+        nativeScope.addSymbol(Symbol('append', None, False, False, False))
+        nativeScope.addSymbol(Symbol('node2world', None, False, False, False))
+        nativeScope.addSymbol(Symbol('scale', None, False, False, False))
+        nativeScope.addSymbol(Symbol('stop', None, False, False, False))
+        nativeScope.addSymbol(Symbol('trace', None, False, False, True))
+        nativeScope.addSymbol(Symbol('addaction', None, False, False, False))
+        nativeScope.addSymbol(Symbol('repeat', None, False, False, True))
+        nativeScope.addSymbol(Symbol('sequence', None, False, False, True))
+        nativeScope.addSymbol(Symbol('moveto', None, False, False, True))
+        nativeScope.addSymbol(Symbol('scaleto', None, False, False, True))
+        nativeScope.addSymbol(Symbol('v_scale', None, False, False, True))
+        nativeScope.addSymbol(Symbol('getscene', None, False, False, True))
+        nativeScope.addSymbol(Symbol('rand', None, False, False, True))
+        nativeScope.addSymbol(Symbol('len', None, False, False, True))
+        nativeScope.addSymbol(Symbol('quitgame', None, False, False, True))
+        nativeScope.addSymbol(Symbol('str', None, False, False, True))
         return
     
     def tabString(self, depth):
@@ -147,7 +152,8 @@ class TypeInferencer():
                     symb.isVar = True
                     symb.isStatic = isStatic                     
                     scope.addSymbol(symb)
-                    
+
+            '''                    
             if scope.superScope:
                 for child in scope.superScope.children:
                     if child.isVar:
@@ -156,6 +162,7 @@ class TypeInferencer():
                             symb = Symbol(child.name, child)
                             symb.isVar = True                     
                             scope.addSymbol(symb)
+            '''
 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
             print "\tFunction: ", node[1]
@@ -180,9 +187,43 @@ class TypeInferencer():
                     for child in node[3]:
                         self.scanNode(child, fnScope)
         elif node[0] == 'clsdef':
-            if node[1] == 'Ctrl1':
-                x = 0
+            clsScope = scope.findSymbol(node[1])
+            if not clsScope:        
+                clsScope = Scope(node[1], node)
+                clsScope.type = node[1]
+                clsScope.isContainer = True
+                scope.addScope(clsScope)
+            else:
+                clsScope.interfacesScope = []
 
+            superName = 'Proxy'
+            if node[2]:
+                interfaces = ''
+                for sup in node[2]:
+                    if not sup:
+                        continue
+                    if sup[0] == 'extends':
+                        superName = sup[1][1]
+                        superScope = scope.findSymbol(superName)
+                        if superScope:
+                            clsScope.superScope = superScope
+                            #for child in superScope.children:
+                            #    clsScope.addSymbol(child)
+                    else:
+                        for iface in sup[1]:
+                            ifaceName = iface[1]
+                            interfaces += ifaceName + ','
+                            ifaceScope = scope.findSymbol(ifaceName)
+                            if ifaceScope:
+                                clsScope.interfacesScope.append(ifaceScope)
+                                #for child in ifaceScope.children:
+                                #    clsScope.addSymbol(child)
+                            
+            print "Class: ", node[1], "extends", superName , "implements", interfaces 
+                
+            for child in node[3]:
+                self.scanNode(child, clsScope)   
+        elif node[0] == 'interface':
             clsScope = scope.findSymbol(node[1])
             if not clsScope:        
                 clsScope = Scope(node[1], node)
@@ -190,18 +231,7 @@ class TypeInferencer():
                 clsScope.isContainer = True
                 scope.addScope(clsScope)
 
-            superName = ''
-            if node[2]:
-                if node[2][0]:
-                    superScope = scope.findSymbol(node[2][0][1])
-                    if superScope:
-                        clsScope.superScope = superScope
-                        for child in superScope.children:
-                            clsScope.addSymbol(child)
-                    superName = node[2][0][1]
-                #else <interface>
-
-            print "Class: ", node[1], "<", superName , ">"
+            print "Interface: ", node[1]
                 
             for child in node[3]:
                 self.scanNode(child, clsScope)   

@@ -66,17 +66,21 @@ class TranslatorIOS(translator.Translator):
         definedSymbols = {}
         
         for cls in self.inferencer.symbolsStack.children:
-            for child in cls.children:
-                if not definedSymbols.has_key(child.name):
-                    definedSymbols[child.name] = child.name;
-                    
-                    if not child.isStatic:
-                        if child.isVar:
-                            f.write('\t@property (strong) Proxy *%s;\n'%(child.name))
-                        else:
-                            f.write('\t@property (strong) MethodCall %s;\n'%(child.name))
-                            f.write('\t- (Proxy *)%s:(Proxy *)firstArg, ...;\n'%(child.name))
-        
+            if isinstance(cls, type_inference.Scope):
+                for child in cls.children:
+                    if not definedSymbols.has_key(child.name):
+                        definedSymbols[child.name] = child.name;
+                        
+                        if not child.isStatic:
+                            if child.isVar:
+                                f.write('\t@property (strong) Proxy *%s;\n'%(child.name))
+                            else:
+                                f.write('\t@property (strong) MethodCall %s;\n'%(child.name))
+                                f.write('\t- (Proxy *)%s:(Proxy *)firstArg, ...;\n'%(child.name))
+            else:
+                f.write('\t@property (strong) MethodCall %s;\n'%(cls.name))
+                f.write('\t- (Proxy *)%s:(Proxy *)firstArg, ...;\n'%(cls.name))
+                
         f.write('\n@end\n')
         
         f.close()
@@ -96,14 +100,22 @@ class TranslatorIOS(translator.Translator):
         return
     
     def endClass(self, node):
-        extends = ' : Proxy'
-        if node[2] and node[2][0]:
-            extends = ' : %s'%(node[2][0][1])
+        symbol = self.inferencer.symbolsStack.findSymbol(self.className)
+        extends = 'Proxy'
+        if symbol.superScope:        
+            extends = symbol.superScope.name
+        interfaces = ''
+        for iface in symbol.interfacesScope:
+            if interfaces != '':
+                interfaces += ', '
+            interfaces += iface.name
+        if interfaces != '':
+            interfaces = '<' + interfaces + '>'
 
         self.buildMethodProperties()
         self.buildStaticAccessors()
     
-        self.hFileHandler.write('@interface %s%s {\n%s}\n\n%s\n\n%s\n@end\n\n'%(self.className, extends, self.hFileVarDefs, self.hFilePropDefs, self.hFileMethodDefs))
+        self.hFileHandler.write('@interface %s : %s %s {\n%s}\n\n%s\n\n%s\n@end\n\n'%(self.className, extends, interfaces, self.hFileVarDefs, self.hFilePropDefs, self.hFileMethodDefs))
         self.mFileHandler.write('%s\n%s\n@end\n\n'%(self.mFileMethodDefs, self.mFileMethodBody))
         self.className = None
         self.methodName = None
@@ -114,9 +126,26 @@ class TranslatorIOS(translator.Translator):
         self.mFileMethodBody = ''
         return
     
+    def beginInterface(self, node):
+        self.className = node[1]
+
+        self.beginMethodBuffering()        
+        return
+    
+    def endInterface(self, node):
+        self.popBuff()
+        
+        self.hFileHandler.write('@protocol %s <NSObject>\n\n%s%s%s\n@end\n\n'%(self.className, self.hFileVarDefs, self.hFilePropDefs, self.hFileMethodDefs))
+        self.className = None
+        self.methodName = None
+        self.hFileVarDefs = ''
+        self.hFilePropDefs = ''
+        self.hFileMethodDefs = ''
+        self.mFileMethodDefs = ''
+        self.mFileMethodBody = ''
+        return
+    
     def buildMethodProperties(self):
-        methodsDef = '\tNSMutableDictionary *newM = [NSMutableDictionary dictionaryWithDictionary:self.methods];\n'
-        methodsDef += '\t[newM setValuesForKeysWithDictionary:[NSDictionary dictionaryWithObjectsAndKeys:'
         self.addToMethodBody('- (void)defineMethods\n{\n\t__weak typeof(self) weakSelf = self;\n\n\t[super defineMethods];\n\n');
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         for child in symbol.children:
@@ -124,8 +153,7 @@ class TranslatorIOS(translator.Translator):
                 selfTarget = 'weakSelf'
                 if not child.isStatic:
                     self.addToMethodBody('\tself.%s = ^(Proxy *firstArg, ...)\n\t{\n\t\tva_list args;\n\t\tva_start(args, firstArg);\n\n\t\tProxy *ret = [%s _%s:firstArg args:args];\n\t\tva_end(args);\n\n\t\treturn ret;\n\t};\n\n'%(child.name, selfTarget, child.name))
-                    methodsDef += 'self.%s, @"%s", '%(child.name, child.name)
-        self.addToMethodBody(methodsDef + 'Nil]];\n\tself.methods = newM;\n}\n\n')
+        self.addToMethodBody('\n}\n\n')
         return
     
     def buildStaticAccessors(self):
@@ -154,9 +182,11 @@ class TranslatorIOS(translator.Translator):
         if not self.className:
             self.methodName = node[1]
             sym = self.inferencer.symbolsStack.findSymbol(self.methodName)
+            if not sym:
+                print 'Global method not found: %s %s'%(self.methodName, node)
             sym.isGlobal = True
             self.beginMethodBuffering()
-            self.addToMethodBody('Proxy *%s(Proxy *firstArg, ...)\n{\n'%(self.methodName))
+            self.addToMethodBody('Proxy *g_%s(Proxy *firstArg, ...)\n{\n'%(self.methodName))
         else :
             if node[1] == 0:
                 funcString = '- (id)init'
@@ -284,7 +314,7 @@ class TranslatorIOS(translator.Translator):
     def methodCallEnd(self, name, isGlobal):
         self.isInsideACall = False
         if isGlobal:
-            self.addToMethodBody('%s(%sNil)'%(name, self.popBuff()))
+            self.addToMethodBody('g_%s(%sNil)'%(name, self.popBuff()))
         else:
             self.addToMethodBody(' %s:%sNil]'%(name, self.popBuff()))
         return

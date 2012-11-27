@@ -40,31 +40,7 @@ class Translator:
         return  
     
     def begin(self):
-        self.inferencer = type_inference.TypeInferencer()        
-        
-        '''
-        errors = 0
-        filename = 'prueba.as'
-        dirname = 'projects/housewifewars'
-        fname = '%s/%s'%(dirname, filename)
-        while self.passCount < self.maxPasses:
-            print "Pass: ", self.passCount
-
-            if self.passCount == 0:
-                print 'Parsing file : %s'%(fname)
-                data = open(fname).read()    
-                prog = asyacc.parse(data)
-                self.programs[fname] = prog
-                self.inferencer.checkTypes(self.programs[fname])
-            elif self.passCount == 1:
-                self.inferencer.checkTypes(self.programs[fname])
-            else:
-                errors += self.compile(dirname, filename)
-            print 'Total errors: ', errors
-            self.passCount += 1
-        return
-        '''
-    
+        self.inferencer = type_inference.TypeInferencer()            
     
         while self.passCount < self.maxPasses:
             print "Pass: ", self.passCount
@@ -162,6 +138,14 @@ class Translator:
                 self.parseNode(node[3])
                 
                 self.endClass(node)                
+        elif node[0] == 'interface':        
+                self.inferencer.thisScope = self.inferencer.symbolsStack.findSymbol(node[1])
+                
+                self.beginInterface(node)
+                 
+                self.parseNode(node[3])
+                
+                self.endInterface(node)                
         elif node[0] == 'new':#['new', ['id', 'f'], [[],[]]]                
             self.newObjectBegin(node[1][1])    
             
