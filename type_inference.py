@@ -10,6 +10,7 @@ class Symbol:
     isStatic = False
     staticInitializer = ''
     isGlobal = False
+    fileName = ''
     
     def __init__(self, name, symbol, isVar = False, isStatic = False, isGlobal = False):
         self.name = name
@@ -17,7 +18,7 @@ class Symbol:
         self.isVar = isVar
         self.isStatic = isStatic
         self.isGlobal = isGlobal
-
+        
 class Scope(Symbol):
     children = []
     prevScope = None
@@ -56,6 +57,7 @@ class TypeInferencer():
     intSymbol = None
     floatSymbol = None
     stringSymbol = None
+    currentFile = ''
     
     def __init__(self):
         self.intSymbol = Symbol('int', 'int')
@@ -75,7 +77,6 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('pos', None, False, False, False))
         nativeScope.addSymbol(Symbol('setevent', None, False, False, False))
         nativeScope.addSymbol(Symbol('append', None, False, False, False))
-        nativeScope.addSymbol(Symbol('node2world', None, False, False, False))
         nativeScope.addSymbol(Symbol('scale', None, False, False, False))
         nativeScope.addSymbol(Symbol('stop', None, False, False, False))
         nativeScope.addSymbol(Symbol('trace', None, False, False, True))
@@ -90,6 +91,35 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('len', None, False, False, True))
         nativeScope.addSymbol(Symbol('quitgame', None, False, False, True))
         nativeScope.addSymbol(Symbol('str', None, False, False, True))
+        nativeScope.addSymbol(Symbol('int', None, False, False, True))
+        nativeScope.addSymbol(Symbol('c_addtimer', None, False, False, True))
+        nativeScope.addSymbol(Symbol('parsexml', None, False, False, True))
+        nativeScope.addSymbol(Symbol('ppy_listachievements', None, False, False, True))
+        nativeScope.addSymbol(Symbol('ppy_unlockachievement', None, False, False, True))
+        nativeScope.addSymbol(Symbol('dict', None, False, False, True))
+        nativeScope.addSymbol(Symbol('json_loads', None, False, False, True))
+        nativeScope.addSymbol(Symbol('createsound', None, False, False, True))
+        nativeScope.addSymbol(Symbol('createaudio', None, False, False, True))
+        nativeScope.addSymbol(Symbol('c_invoke', None, False, False, True))
+        nativeScope.addSymbol(Symbol('openUrl', None, False, False, True))
+        nativeScope.addSymbol(Symbol('getmodel', None, False, False, True))
+        nativeScope.addSymbol(Symbol('ppy_setscore', None, False, False, True))
+        nativeScope.addSymbol(Symbol('ppy_query', None, False, False, True))
+        nativeScope.addSymbol(Symbol('animate', None, False, False, True))
+        nativeScope.addSymbol(Symbol('sprite', None, False, False, True))
+        nativeScope.addSymbol(Symbol('http_request', None, False, False, True))
+        nativeScope.addSymbol(Symbol('moveby', None, False, False, True))
+        nativeScope.addSymbol(Symbol('abs', None, False, False, True))
+        nativeScope.addSymbol(Symbol('time', None, False, False, True))
+        nativeScope.addSymbol(Symbol('c_addtimer', None, False, False, True))
+        nativeScope.addSymbol(Symbol('g_moveto', None, False, False, True))
+        nativeScope.addSymbol(Symbol('g_scaleto', None, False, False, True))
+        nativeScope.addSymbol(Symbol('spawn', None, False, False, True))
+        nativeScope.addSymbol(Symbol('sqrt', None, False, False, True))
+        nativeScope.addSymbol(Symbol('screensize', None, False, False, True))
+        nativeScope.addSymbol(Symbol('delaytime', None, False, False, True))
+        nativeScope.addSymbol(Symbol('float', None, False, False, True))
+        nativeScope.addSymbol(Symbol('label', None, False, False, True))
         return
     
     def tabString(self, depth):
@@ -117,7 +147,9 @@ class TypeInferencer():
             idx += 1                          
         return
     
-    def checkTypes(self, prog):
+    def checkTypes(self, fileName, prog):
+        self.currentFile = fileName;
+        
         self.scanSymbols(prog[1])
 
         return        
@@ -153,6 +185,7 @@ class TypeInferencer():
                     symb.isStatic = isStatic                     
                     scope.addSymbol(symb)
 
+            #print "\tVar: ", symb.name, ":", symb.isStatic
             '''                    
             if scope.superScope:
                 for child in scope.superScope.children:
@@ -165,7 +198,7 @@ class TypeInferencer():
             '''
 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
-            print "\tFunction: ", node[1]
+            #print "\tFunction: ", node[1]
             isStatic = False
             if len(node) >= 5:
                 for decs in node[4]:
@@ -195,10 +228,12 @@ class TypeInferencer():
                 scope.addScope(clsScope)
             else:
                 clsScope.interfacesScope = []
+                
+            clsScope.fileName = self.currentFile.replace('.as', '.h')
 
             superName = 'Proxy'
+            interfaces = ''
             if node[2]:
-                interfaces = ''
                 for sup in node[2]:
                     if not sup:
                         continue
@@ -232,6 +267,7 @@ class TypeInferencer():
                 scope.addScope(clsScope)
 
             print "Interface: ", node[1]
+            clsScope.fileName = self.currentFile.replace('.as', '.h')
                 
             for child in node[3]:
                 self.scanNode(child, clsScope)   

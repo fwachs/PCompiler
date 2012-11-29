@@ -8,6 +8,8 @@ class Translator:
     inferencer = None
     programs = {}
     currentFileName = ''
+    currentDir = ''
+    projectName = ''
     
     @staticmethod
     def createTranslator(translatorType):
@@ -40,11 +42,14 @@ class Translator:
         return  
     
     def begin(self):
-        self.inferencer = type_inference.TypeInferencer()            
+        self.inferencer = type_inference.TypeInferencer()
+        
+        self.currentDir = '/Users/rafa/Desarrollo/2clams/PapayaGameSDK/projects/'
+        self.projectName = 'housewifewars'            
     
         while self.passCount < self.maxPasses:
             print "Pass: ", self.passCount
-            for dirname, dirnames, filenames in os.walk('projects/test'):
+            for dirname, dirnames, filenames in os.walk(self.currentDir + self.projectName):
                 for filename in filenames:
                     if filename[-3:] == '.as':
                         fname = '%s/%s'%(dirname, filename)
@@ -52,11 +57,12 @@ class Translator:
                         if self.passCount == 0:
                             data = open(fname).read()    
                             prog = asyacc.parse(data)
-                            self.dumpTree(prog)
+                            #self.dumpTree(prog)
                             self.programs[fname] = prog
-                            self.inferencer.checkTypes(self.programs[fname])
+                            self.inferencer.checkTypes(filename, self.programs[fname])
+                            #return
                         elif self.passCount == 1:
-                            self.inferencer.checkTypes(self.programs[fname])
+                            self.inferencer.checkTypes(filename, self.programs[fname])
                         else:
                             self.compile(dirname, filename)
             self.passCount += 1
@@ -108,10 +114,10 @@ class Translator:
             cnt = 0
             for n in node[2]:            
                 sym = self.inferencer.thisScope.findSymbol(n[1][1])
-                if sym:
-                    sym.isStatic = isStatic
+                #if sym:
+                #    sym.isStatic = isStatic
                 
-                self.varDefBegin(n[1][1], isStatic, cnt)
+                self.varDefBegin(n[1][1], isStatic , cnt)
                 
                 if n[2]:
                     T = self.parseNode(n[2])
@@ -159,22 +165,28 @@ class Translator:
             self.methodCallBegin()
                             
             isGlobal = False
-            methodNode = ''
+            methodName = ''
             if node[1][0] == 'access':                    
                 self.parseNode(node[1][1])
                 methodNode = node[1][2][1]
+                methodName = methodNode[1]
+            elif node[1][1] == 'super':
+                self.super()
+                methodName = 'initWithArgs'
             else:
                 self.this()
                 methodNode = node[1]
-                if self.inferencer.thisScope:
-                    sym = self.inferencer.thisScope.findSymbol(methodNode[1])
+                if methodNode[0] == 'int':
+                    methodName = 'int'
                 else:
-                    sym = self.inferencer.symbolsStack.findSymbol(methodNode[1])                    
+                    methodName = methodNode[1]
+                if self.inferencer.thisScope:
+                    sym = self.inferencer.thisScope.findSymbol(methodName)
+                else:
+                    sym = self.inferencer.symbolsStack.findSymbol(methodName)                    
                 if sym and sym.isGlobal:
                     isGlobal = True
-
-            methodName = methodNode[1]
-
+                
             self.methodCallBeginArgs(len(node[2]), isGlobal);
                            
             if len(node[2]):
@@ -186,7 +198,8 @@ class Translator:
             
         elif node[0] == 'super':
             self.super()
-
+            self.parseNode(node[1])
+            
         elif node[0] == 'ret':
             self.retBegin()
             
@@ -247,11 +260,16 @@ class Translator:
             self.unOpEnd(node[1])
         elif node[0] == 'biexp':#['biexp', '*', ['i', '2'], ['i', '2']]
             self.binOpBegin()        
-            Tto = self.parseNode(node[2])
+            if isinstance(node[2][0], types.ListType):
+                self.parseNode(node[2][0])
+            else:
+                self.parseNode(node[2])
             self.binOpOperand(node[1])        
-            Tfrom = self.parseNode(node[3])
-            self.binOpEnd(node[1], Tfrom, Tto)        
-            return Tfrom            
+            if isinstance(node[3][0], types.ListType):
+                self.parseNode(node[3][0])
+            else:
+                self.parseNode(node[3])
+            self.binOpEnd(node[1], None, None)        
         elif node[0] == 'i':        
             number = int(node[1])
             self.intConstant(number)

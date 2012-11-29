@@ -277,7 +277,8 @@ def p_Semicolon(p):
 
 def p_SuperStatement(p):
     'SuperStatement : SUPER Arguments'
-    p[0] = ['super',p[2],p.lineno(1)]
+    #p[0] = ['super_call',p[2],p.lineno(1)]
+    p[0] = ['call', ['id', 'super', 0], p[2],p.lineno(2)]
 
 def p_IfStatement_0(p):
     'IfStatement : IF ParenListExpression Substatement'
