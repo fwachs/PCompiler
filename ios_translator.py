@@ -483,7 +483,7 @@ class TranslatorIOS(translator.Translator):
         return
 
     def nullConstant(self):
-        self.addToMethodBody('Nil')
+        self.addToMethodBody('[Proxy nullProxy]')
         return
         
     def assignBegin(self):
