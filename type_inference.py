@@ -75,7 +75,7 @@ class TypeInferencer():
 
         nativeScope.addSymbol(Symbol('addsprite', None, False, False, False))
         nativeScope.addSymbol(Symbol('pos', None, False, False, False))
-        nativeScope.addSymbol(Symbol('setevent', None, False, False, False))
+        nativeScope.addSymbol(Symbol('_setevent', None, False, False, False))
         nativeScope.addSymbol(Symbol('append', None, False, False, False))
         nativeScope.addSymbol(Symbol('scale', None, False, False, False))
         nativeScope.addSymbol(Symbol('stop', None, False, False, False))
@@ -204,6 +204,9 @@ class TypeInferencer():
                 for decs in node[4]:
                     if decs == 'static':
                         isStatic = True
+            
+            if node[1][0:3] == 'set':
+                node[1] = '_' + node[1]
 
             fnScope = scope.findLocalSymbol(node[1])
             if not fnScope:

@@ -20,6 +20,8 @@ class TranslatorIOS(translator.Translator):
     localVars = None
     iVars = None
     refHeaders = []
+    constructorCalledSuper = False
+    target = ''
     
     def headerExists(self, header):
         for hdr in self.refHeaders:
@@ -112,7 +114,7 @@ class TranslatorIOS(translator.Translator):
                 for child in cls.children:
                     name = child.name
                     if name == cls.name:
-                        name = 'initWithArgs'
+                        continue
                                                 
                     if not definedMethods.has_key(name):
                         definedMethods[name] = name;
@@ -203,9 +205,9 @@ class TranslatorIOS(translator.Translator):
                 if not child.isStatic:
                     name = child.name;
                     if name == self.className:
-                        name = 'initWithArgs'
+                        continue
                         
-                    self.addToMethodBody('\tself.%s = ^(Proxy *firstArg, ...)\n\t{\n\t\tva_list v_args;\n\t\tva_start(v_args, firstArg);\n\n\t\tProxy *ret = [%s _%s:firstArg args:v_args];\n\t\tva_end(v_args);\n\n\t\treturn ret;\n\t};\n\n'%(name, selfTarget, name))
+                    self.addToMethodBody('\tself.%s = ^(va_list v_args)\n\t{\n\t\tif(v_args) {\n\t\t\tProxy *firstArg = va_arg(v_args, Proxy *);\n\n\t\t\tProxy *ret = [%s _%s:firstArg args:v_args];\n\t\t\tva_end(v_args);\n\n\t\t\treturn ret;\n\t\t} else {\n\t\t\treturn [%s %s:Nil];\n\t\t}\n\t};\n\n'%(name, selfTarget, name, selfTarget, name))
         self.addToMethodBody('\n}\n\n')
         return
     
@@ -220,7 +222,7 @@ class TranslatorIOS(translator.Translator):
                     self.hFileMethodDefs += '+ (Proxy*)%s;\n'%(child.name)
                     self.hFileMethodDefs += '+ (void)set%s:(Proxy *)firstArg;\n'%(child.name[0:1].title() + child.name[1:])
                 else:
-                    self.addToMethodBody('+ (MethodCall)%s\n{\n\tMethodCall m = ^(Proxy *firstArg, ...)\n\t{\n\t\tva_list v_args;\n\t\tva_start(v_args, firstArg);\n\n\t\tProxy *ret = [%s _%s:firstArg args:v_args];\n\t\tva_end(v_args);\n\n\t\treturn ret;\n\t};\n\n\treturn m;\n}\n\n'%(child.name, self.className, child.name))                    
+                    self.addToMethodBody('+ (MethodCall)%s\n{\n\tMethodCall m = ^(va_list v_args)\n\t{\n\t\tProxy * firstArg = va_arg(v_args, Proxy *);\n\n\t\tProxy *ret = [%s _%s:firstArg args:v_args];\n\t\tva_end(v_args);\n\n\t\treturn ret;\n\t};\n\n\treturn m;\n}\n\n'%(child.name, self.className, child.name))                    
                     self.hFileMethodDefs += '+ (MethodCall)%s;\n'%(child.name)
         return
 
@@ -247,8 +249,14 @@ class TranslatorIOS(translator.Translator):
         return 'Proxy *'
     
     def beginMethod(self, node, returnsVoid):
+        self.constructorCalledSuper = False
+        
         if self.methodName == 'init':
             self.endMethod([0, 0])
+            constructorSym = self.inferencer.symbolsStack.findSymbol(self.className).findLocalSymbol(self.className)
+            if not constructorSym:            
+                self.beginMethod([0, self.className, [None, None]], False)
+                self.endMethod([0, self.className])            
                         
         funcString = ''
         if not self.className:
@@ -261,7 +269,7 @@ class TranslatorIOS(translator.Translator):
             self.addToMethodBody('Proxy *g_%s(Proxy *firstArg, ...)\n{\n\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n'%(self.methodName))
         else :
             if node[1] == 0:
-                funcString = '- (id)init'
+                funcString = '- (void)defineInstanceVars_' + self.className
                 self.methodName = 'init'
             else:
                 self.methodName = node[1]
@@ -277,17 +285,19 @@ class TranslatorIOS(translator.Translator):
                             staticMode = '+'
                             self.inferencer.thisScope.findSymbol(self.methodName).isStatic = True
                             break
-                        
-                funcString = '%s (Proxy *)_%s:(Proxy *)firstArg args:(va_list)v_args'%(staticMode, methodName)
-                if staticMode == '-':
-                    self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(methodName)
-                else:
-                    self.hFileMethodDefs += '+ (Proxy*)%s:(Proxy *)firstArg, ...;\n'%(methodName)                
+
+                if methodName == 'initWithArgs':
+                    funcString = '- (Proxy *)%s:(Proxy *)firstArg args:(va_list)v_args'%(self.classConstructor(self.className))
+                    self.hFileMethodDefs += '- (id)initWithArgs:(Proxy *)firstArg, ...;\n'                
+                    self.hFileMethodDefs += '- (id)%s:(Proxy *)firstArg args:(va_list)v_args;\n'%(self.classConstructor(self.className))                
+                else:                        
+                    funcString = '%s (Proxy *)_%s:(Proxy *)firstArg args:(va_list)v_args'%(staticMode, methodName)
+                    if staticMode == '-':
+                        self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(methodName)
+                    else:
+                        self.hFileMethodDefs += '+ (Proxy*)%s:(Proxy *)firstArg, ...;\n'%(methodName)                
                 
             self.addToMethodBody(funcString + '\n{\n')
-
-        if self.methodName == self.className:
-            self.addToMethodBody('\tself = [self init];\n')
             
         signature = None
         if node[1] != 0:
@@ -304,18 +314,18 @@ class TranslatorIOS(translator.Translator):
                         idx += 1
                 self.addToMethodBody('\n')
         
-        if self.methodName == 'init':
-            self.addToMethodBody('\tself = [super init];\n')
-            self.addToMethodBody('\tif(self) {\n')
+            
         return
     
     def emptyRet(self, node):
         return
+    
+    def classConstructor(self, className):
+        return 'init' + className[0:1].title() + className[1:]
         
     def endMethod(self, node):
         if self.methodName == 'init':
-            self.addToMethodBody('\t}\n')
-            self.addToMethodBody('\treturn self;\n')
+            self.addToMethodBody('')
         elif self.methodName == self.className:
             self.addToMethodBody('\treturn self;\n')
         else:                        
@@ -329,15 +339,38 @@ class TranslatorIOS(translator.Translator):
             if self.methodName != 'init':
                 if self.className:
                     staticMode = '-'
+                    callTarget = 'self' 
                     sym = self.inferencer.thisScope.findSymbol(self.methodName)
                     if sym and sym.isStatic:
                         staticMode = '+'
+                        callTarget = self.className
                         
                     methodName = self.methodName 
                     if self.methodName == self.className:
                         methodName = 'initWithArgs'
                         
-                    self.addToMethodBody('%s (Proxy *)%s:(Proxy *)firstArg, ...\n{\n\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n\tProxy *ret = [self _%s:firstArg args:v_args];\n\n\tva_end(v_args);\n\n\treturn ret;\n}\n\n'%(staticMode, methodName, methodName))
+                        if not self.constructorCalledSuper:
+                            superSym = self.inferencer.thisScope.superScope
+                            if superSym:
+                                superName = superSym.name
+                            else:
+                                superName = 'Proxy'
+                                
+                            self.addToMethodBody('- (id)initWithArgs:(Proxy *)firstArg, ...\n{\n' +
+                                             '\tva_list v_args;\n\tva_start(v_args, firstArg);\n' +
+                                             '\tself = [super %s:firstArg args:v_args];\n'%(self.classConstructor(superName)) +
+                                             '\tva_end(v_args);\n\n' +
+                                             '\tva_start(v_args, firstArg);\n' +
+                                             '\t[self defineInstanceVars_%s];\n'%(self.className) + 
+                                             '\tself = [self %s:firstArg args:v_args];\n'%(self.classConstructor(self.className)) +
+                                             '\tva_end(v_args);\n\n\treturn self;\n}\n\n')
+                        else:
+                            self.addToMethodBody('- (id)initWithArgs:(Proxy *)firstArg, ...\n{\n' +
+                                             '\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n' +
+                                             '\tself = [self %s:firstArg args:v_args];\n\n'%(self.classConstructor(self.className)) +
+                                             '\tva_end(v_args);\n\n\treturn self;\n}\n\n')
+                    else:
+                        self.addToMethodBody('%s (Proxy *)%s:(Proxy *)firstArg, ...\n{\n\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n\tProxy *ret = [%s _%s:firstArg args:v_args];\n\n\tva_end(v_args);\n\n\treturn ret;\n}\n\n'%(staticMode, methodName, callTarget, methodName))
         
         self.mFileBufs += self.mFileMethodBody
         self.mFileMethodBody = ''
@@ -390,11 +423,12 @@ class TranslatorIOS(translator.Translator):
         if isGlobal:
             self.popBuff()
         else:
-            target = self.popBuff();
-            if target == 'super' and self.methodName == self.className:
+            self.target = self.popBuff();
+            if self.target == 'super' and self.methodName == self.className:
+                self.constructorCalledSuper = True
                 self.addToMethodBody('self = [super')
             else:
-                self.addToMethodBody('[' + target)
+                self.addToMethodBody('[' + self.target)
         self.beginMethodBuffering()
         return
         
@@ -405,10 +439,16 @@ class TranslatorIOS(translator.Translator):
     
     def methodCallEnd(self, name, isGlobal):
         self.isInsideACall = False
+        if name[0:3] == 'set':
+            name = '_' + name
+            
         if isGlobal:
             self.addToMethodBody('g_%s(%sNil)'%(name, self.popBuff()))
         else:
             self.addToMethodBody(' %s:%sNil]'%(name, self.popBuff()))
+
+        if self.target == 'super' and self.methodName == self.className:
+            self.addToMethodBody(';\n\t[self defineInstanceVars_%s]'%(self.className)) 
         return
     
     def newObjectBegin(self, className):
