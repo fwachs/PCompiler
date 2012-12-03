@@ -552,7 +552,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def ifExpEnd(self):
-        self.addToMethodBody(' intValue]) {\n')
+        self.addToMethodBody(' boolValue]) {\n')
         return
     
     def ifElse(self, isSingleStatement):
@@ -672,7 +672,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def forStep(self):
-        self.addToMethodBody(' intValue]; ')
+        self.addToMethodBody(' boolValue]; ')
         return
     
     def forBlock(self):
@@ -688,7 +688,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def whileBlock(self):
-        self.addToMethodBody(' intValue]) {\n')
+        self.addToMethodBody(' boolValue]) {\n')
         return
     
     def whileEnd(self):

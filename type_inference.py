@@ -110,6 +110,8 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('http_request', None, False, False, True))
         nativeScope.addSymbol(Symbol('moveby', None, False, False, True))
         nativeScope.addSymbol(Symbol('abs', None, False, False, True))
+        nativeScope.addSymbol(Symbol('sin', None, False, False, True))
+        nativeScope.addSymbol(Symbol('cos', None, False, False, True))
         nativeScope.addSymbol(Symbol('time', None, False, False, True))
         nativeScope.addSymbol(Symbol('c_addtimer', None, False, False, True))
         nativeScope.addSymbol(Symbol('g_moveto', None, False, False, True))
