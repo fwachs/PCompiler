@@ -207,7 +207,20 @@ class TranslatorIOS(translator.Translator):
                     if name == self.className:
                         continue
                         
-                    self.addToMethodBody('\tself.%s = ^(va_list v_args)\n\t{\n\t\tif(v_args) {\n\t\t\tProxy *firstArg = va_arg(v_args, Proxy *);\n\n\t\t\tProxy *ret = [%s _%s:firstArg args:v_args];\n\t\t\tva_end(v_args);\n\n\t\t\treturn ret;\n\t\t} else {\n\t\t\treturn [%s %s:Nil];\n\t\t}\n\t};\n\n'%(name, selfTarget, name, selfTarget, name))
+                    self.addToMethodBody('\tself.%s = ^(Proxy *firstArg, ...)\n\t{\n'%(name) +
+                                         '\t\tProxy *ret;\n' +
+                                         '\t\tva_list v_args;\n' +
+                                         '\t\tva_start(v_args, firstArg);\n\n' +
+                                         '\t\tProxy *arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
+                                         '\t\targ[0] = firstArg;\n' +
+                                         '\t\tint i = 0;\n' +
+                                         '\t\twhile(arg[i]) {\n' +
+                                         '\t\t\ti++;\n' +
+                                         '\t\t\targ[i] = va_arg(v_args, Proxy*);\n' +
+                                         '\t\t}\n\t\tva_end(v_args);\n\n' +
+                                         '\t\tret = [weakSelf %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(name) +
+                                         '\n\t\treturn ret;\n\t};\n\n'
+                                         )
         self.addToMethodBody('\n}\n\n')
         return
     
@@ -222,9 +235,23 @@ class TranslatorIOS(translator.Translator):
                     self.hFileMethodDefs += '+ (Proxy*)%s;\n'%(child.name)
                     self.hFileMethodDefs += '+ (void)set%s:(Proxy *)firstArg;\n'%(child.name[0:1].title() + child.name[1:])
                 else:
-                    self.addToMethodBody('+ (MethodCall)%s\n{\n\tMethodCall m = ^(va_list v_args)\n\t{\n\t\tProxy * firstArg = va_arg(v_args, Proxy *);\n\n\t\tProxy *ret = [%s _%s:firstArg args:v_args];\n\t\tva_end(v_args);\n\n\t\treturn ret;\n\t};\n\n\treturn m;\n}\n\n'%(child.name, self.className, child.name))                    
+                    self.addToMethodBody('+ (MethodCall)%s\n{\n\tMethodCall m = ^(Proxy *firstArg, ...)\n\t{\n'%(child.name) +
+                                         '\t\tProxy *ret;\n' +
+                                         '\t\tva_list v_args;\n' +
+                                         '\t\tva_start(v_args, firstArg);\n\n' +
+                                         '\t\tProxy *arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
+                                         '\t\targ[0] = firstArg;\n' +
+                                         '\t\tint i = 0;\n' +
+                                         '\t\twhile(arg[i]) {\n' +
+                                         '\t\t\ti++;\n' +
+                                         '\t\t\targ[i] = va_arg(v_args, Proxy*);\n' +
+                                         '\t\t}\n\t\tva_end(v_args);\n\n' +
+                                         '\t\tret = [%s %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(self.className, child.name) +
+                                         '\n\t\treturn ret;\n\t};\n\n' +
+                                         '\treturn m;\n}'
+                                         )
                     self.hFileMethodDefs += '+ (MethodCall)%s;\n'%(child.name)
-        return
+                    return
 
     def beginInterface(self, node):
         self.className = node[1]
@@ -266,7 +293,7 @@ class TranslatorIOS(translator.Translator):
                 print 'Global method not found: %s %s'%(self.methodName, node)
             sym.isGlobal = True
             self.beginMethodBuffering()
-            self.addToMethodBody('Proxy *g_%s(Proxy *firstArg, ...)\n{\n\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n'%(self.methodName))
+            self.addToMethodBody('Proxy *g_%s(Proxy *firstArg, ...)\n{\n'%(self.methodName))
         else :
             if node[1] == 0:
                 funcString = '- (void)defineInstanceVars_' + self.className
@@ -287,11 +314,11 @@ class TranslatorIOS(translator.Translator):
                             break
 
                 if methodName == 'initWithArgs':
-                    funcString = '- (Proxy *)%s:(Proxy *)firstArg args:(va_list)v_args'%(self.classConstructor(self.className))
+                    funcString = '- (Proxy *)%s:(Proxy *)firstArg, ...'%(self.classConstructor(self.className))
                     self.hFileMethodDefs += '- (id)initWithArgs:(Proxy *)firstArg, ...;\n'                
-                    self.hFileMethodDefs += '- (id)%s:(Proxy *)firstArg args:(va_list)v_args;\n'%(self.classConstructor(self.className))                
+                    self.hFileMethodDefs += '- (id)%s:(Proxy *)firstArg, ...;\n'%(self.classConstructor(self.className))                
                 else:                        
-                    funcString = '%s (Proxy *)_%s:(Proxy *)firstArg args:(va_list)v_args'%(staticMode, methodName)
+                    funcString = '%s (Proxy *)%s:(Proxy *)firstArg, ...'%(staticMode, methodName)
                     if staticMode == '-':
                         self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(methodName)
                     else:
@@ -306,13 +333,23 @@ class TranslatorIOS(translator.Translator):
             idx = 0
             if signature != None:                    
                 if len(signature):
+                    self.addToMethodBody('\tva_list v_args;\n\tva_start(v_args, firstArg);\n')
+                    prevVar = ''
                     for arg in signature:
                         if idx == 0:
-                            self.addToMethodBody('\tProxy *%s = firstArg;\n'%(arg[0][1]))
+                            self.addToMethodBody('\tProxy *%s = [Proxy nullProxy];\n'%(arg[0][1]))
+                            self.addToMethodBody('\tif(firstArg) {\n')
+                            self.addToMethodBody('\t\t%s = firstArg;\n'%(arg[0][1]))
+                            self.addToMethodBody('\t}\n')
                         else:
-                            self.addToMethodBody('\tProxy *%s = va_arg(v_args, Proxy*);\n'%(arg[0][1]))
+                            self.addToMethodBody('\tProxy *%s = [Proxy nullProxy];\n'%(arg[0][1]))
+                            self.addToMethodBody('\tif(![[%s isNull] boolValue]) {\n'%(prevVar))
+                            self.addToMethodBody('\t\tProxy *_p = va_arg(v_args, Proxy*);\n')
+                            self.addToMethodBody('\t\t%s = (_p ? _p : %s);\n'%(arg[0][1], arg[0][1]))
+                            self.addToMethodBody('\t}\n')
+                        prevVar = arg[0][1]
                         idx += 1
-                self.addToMethodBody('\n')
+                self.addToMethodBody('\tva_end(v_args);\n\n')
         
             
         return
@@ -349,6 +386,8 @@ class TranslatorIOS(translator.Translator):
                     if self.methodName == self.className:
                         methodName = 'initWithArgs'
                         
+                        self.addToMethodBody('- (id)initWithArgs:(Proxy *)firstArg, ...\n{\n');
+                        
                         if not self.constructorCalledSuper:
                             superSym = self.inferencer.thisScope.superScope
                             if superSym:
@@ -356,21 +395,20 @@ class TranslatorIOS(translator.Translator):
                             else:
                                 superName = 'Proxy'
                                 
-                            self.addToMethodBody('- (id)initWithArgs:(Proxy *)firstArg, ...\n{\n' +
-                                             '\tva_list v_args;\n\tva_start(v_args, firstArg);\n' +
-                                             '\tself = [super %s:firstArg args:v_args];\n'%(self.classConstructor(superName)) +
-                                             '\tva_end(v_args);\n\n' +
-                                             '\tva_start(v_args, firstArg);\n' +
-                                             '\t[self defineInstanceVars_%s];\n'%(self.className) + 
-                                             '\tself = [self %s:firstArg args:v_args];\n'%(self.classConstructor(self.className)) +
-                                             '\tva_end(v_args);\n\n\treturn self;\n}\n\n')
-                        else:
-                            self.addToMethodBody('- (id)initWithArgs:(Proxy *)firstArg, ...\n{\n' +
-                                             '\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n' +
-                                             '\tself = [self %s:firstArg args:v_args];\n\n'%(self.classConstructor(self.className)) +
-                                             '\tva_end(v_args);\n\n\treturn self;\n}\n\n')
-                    else:
-                        self.addToMethodBody('%s (Proxy *)%s:(Proxy *)firstArg, ...\n{\n\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n\tProxy *ret = [%s _%s:firstArg args:v_args];\n\n\tva_end(v_args);\n\n\treturn ret;\n}\n\n'%(staticMode, methodName, callTarget, methodName))
+                            self.addToMethodBody('\tself = [super %s:Nil];\n\n'%(self.classConstructor(superName)))
+                            
+                        self.addToMethodBody('\t[self defineInstanceVars_%s];\n\n'%(self.className))
+                        self.addToMethodBody('\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n' +
+                                         '\tProxy *arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
+                                         '\targ[0] = firstArg;\n' +
+                                         '\tint i = 0;\n' +
+                                         '\twhile(arg[i]) {\n' +
+                                         '\t\ti++;\n' +
+                                         '\t\targ[i] = va_arg(v_args, Proxy*);\n' +
+                                         '\t}\n\tva_end(v_args);\n\n' +
+                                         '\tself = [self %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(self.classConstructor(self.className)) +
+                                         '\n\treturn self;\n}\n\n')
+
         
         self.mFileBufs += self.mFileMethodBody
         self.mFileMethodBody = ''
@@ -446,9 +484,8 @@ class TranslatorIOS(translator.Translator):
             self.addToMethodBody('g_%s(%sNil)'%(name, self.popBuff()))
         else:
             self.addToMethodBody(' %s:%sNil]'%(name, self.popBuff()))
-
-        if self.target == 'super' and self.methodName == self.className:
-            self.addToMethodBody(';\n\t[self defineInstanceVars_%s]'%(self.className)) 
+            if self.target == 'super' and self.methodName == self.className:
+                self.addToMethodBody(';\n\t[self defineInstanceVars_%s]'%(self.className)) 
         return
     
     def newObjectBegin(self, className):
@@ -499,9 +536,13 @@ class TranslatorIOS(translator.Translator):
         leftSide = self.popBuff()
         
         if operator == '+=':
-            self.addToMethodBody('[%s add:%s]'%(leftSide, rightSide))
+            self.addToMethodBody('[%s add2self:%s]'%(leftSide, rightSide))
         elif operator == '-=':
-            self.addToMethodBody('[%s sub:%s]'%(leftSide, rightSide))
+            self.addToMethodBody('[%s sub2self:%s]'%(leftSide, rightSide))
+        elif operator == '*=':
+            self.addToMethodBody('[%s mul2self:%s]'%(leftSide, rightSide))
+        elif operator == '/=':
+            self.addToMethodBody('[%s div2self:%s]'%(leftSide, rightSide))
         else:
             self.addToMethodBody('%s %s %s'%(leftSide, operator, rightSide))
         return
