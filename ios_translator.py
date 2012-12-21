@@ -22,6 +22,9 @@ class TranslatorIOS(translator.Translator):
     refHeaders = []
     constructorCalledSuper = False
     target = ''
+    intConstants = []
+    floatConstants = []
+    stringConstants = []
     
     def headerExists(self, header):
         for hdr in self.refHeaders:
@@ -71,7 +74,7 @@ class TranslatorIOS(translator.Translator):
         self.hFileHandler = open('%s/%s'%(path, hFileName), 'w+')
         
         self.hFileHandler.write('#import <Foundation/Foundation.h>\n#import "proxy.h"\n')
-        self.mFileHandler.write('#import "%s"\n#import "types.h"\n\n'%(hFileName))
+        self.mFileHandler.write('#import "%s"\n#import "types.h"\n#import "globals.h"\n\n'%(hFileName))
         return
     
     def endFile(self):
@@ -87,6 +90,32 @@ class TranslatorIOS(translator.Translator):
         self.refHeaders = []
         return
     
+    def addIntConstant(self, intConst):
+        try:
+            i = self.intConstants.index(intConst)
+        except ValueError:            
+            self.intConstants.append(intConst)
+            i = len(self.intConstants) -1
+            
+        return 'CONST_I_%d'%(i)
+
+    def addFloatConstant(self, floatConst):
+        try:
+            i = self.floatConstants.index(floatConst)
+        except ValueError:            
+            self.floatConstants.append(floatConst)
+            i = len(self.floatConstants) -1
+            
+        return 'CONST_F_%d'%(i)
+
+    def addStringConstant(self, stringConst):
+        try:
+            i = self.stringConstants.index(stringConst)
+        except ValueError:            
+            self.stringConstants.append(stringConst)
+            i = len(self.stringConstants) -1
+            
+        return 'CONST_S_%d'%(i)
     def done(self):
         f = open(self.currentDir + self.projectName + '/ios/defs.h', 'w+')
         f.write(self.hFileImports)
@@ -139,7 +168,60 @@ class TranslatorIOS(translator.Translator):
         f.write('\n@end\n')
         
         f.close()
-                
+        
+        self.writeConstantsFiles()
+        return
+    
+    def writeConstantsFiles(self):
+        f = open(self.currentDir + self.projectName + '/ios/globals.h', 'w+')
+        
+        f.write('#import "Proxy.h"\n\n')
+        f.write('Proxy *CONST_NULL;\n\n')
+        
+        i = 0
+        for cnst in self.intConstants:
+            f.write('Proxy * CONST_I_%d;\n'%(i))
+            i += 1
+        
+        i = 0
+        for cnst in self.floatConstants:
+            f.write('Proxy * CONST_F_%d;\n'%(i))
+            i += 1
+
+        i = 0
+        for cnst in self.stringConstants:
+            f.write('Proxy * CONST_S_%d;\n'%(i))
+            i += 1
+        
+        f.write('\ninitializeConstants();\n')
+        
+        f.close()
+        
+        
+        f = open(self.currentDir + self.projectName + '/ios/globals.m', 'w+')
+        
+        f.write('#import "globals.h"\n\n')
+        f.write('initializeConstants()\n{\n')
+        f.write('\tCONST_NULL = [Proxy nullProxy];\n')
+
+        i = 0
+        for cnst in self.intConstants:
+            f.write('\tCONST_I_%d = [Proxy proxyWithInt:%d];\n'%(i, cnst))
+            i += 1
+        
+        i = 0
+        for cnst in self.floatConstants:
+            f.write('\tCONST_F_%d = [Proxy proxyWithFloat:%f];\n'%(i, cnst))
+            i += 1
+
+        i = 0
+        for cnst in self.stringConstants:
+            f.write('\tCONST_S_%d = [Proxy proxyWithString:@%s];\n'%(i, cnst))
+            i += 1
+        
+        f.write('}\n')
+        
+        f.close()
         return
     
     def beginClass(self, node):
@@ -183,6 +265,7 @@ class TranslatorIOS(translator.Translator):
             interfaces = '<' + interfaces + '>'
 
         self.buildMethodProperties()
+        
         self.buildStaticAccessors()
     
         self.hFileBuff += '@interface %s : %s %s {\n%s}\n\n%s\n\n%s\n@end\n\n'%(self.className, extends, interfaces, self.hFileVarDefs, self.hFilePropDefs, self.hFileMethodDefs)
@@ -248,10 +331,10 @@ class TranslatorIOS(translator.Translator):
                                          '\t\t}\n\t\tva_end(v_args);\n\n' +
                                          '\t\tret = [%s %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(self.className, child.name) +
                                          '\n\t\treturn ret;\n\t};\n\n' +
-                                         '\treturn m;\n}'
+                                         '\treturn m;\n}\n\n'
                                          )
                     self.hFileMethodDefs += '+ (MethodCall)%s;\n'%(child.name)
-                    return
+        return
 
     def beginInterface(self, node):
         self.className = node[1]
@@ -329,6 +412,9 @@ class TranslatorIOS(translator.Translator):
         signature = None
         if node[1] != 0:
             signature = node[2][1]
+
+            if self.methodName == 'displayOkayPrompt':
+                x = 0
             
             idx = 0
             if signature != None:                    
@@ -336,13 +422,19 @@ class TranslatorIOS(translator.Translator):
                     self.addToMethodBody('\tva_list v_args;\n\tva_start(v_args, firstArg);\n')
                     prevVar = ''
                     for arg in signature:
+                        self.addToMethodBody('\tProxy *%s = '%(arg[0][1]))
+                        if len(arg) == 1:
+                            self.addToMethodBody('[Proxy nullProxy];\n')
+                        else:
+                            self.beginMethodBuffering()
+                            self.parseNode(arg[1])
+                            self.addToMethodBody('%s;\n'%(self.popBuff()))
+
                         if idx == 0:
-                            self.addToMethodBody('\tProxy *%s = [Proxy nullProxy];\n'%(arg[0][1]))
                             self.addToMethodBody('\tif(firstArg) {\n')
                             self.addToMethodBody('\t\t%s = firstArg;\n'%(arg[0][1]))
                             self.addToMethodBody('\t}\n')
-                        else:
-                            self.addToMethodBody('\tProxy *%s = [Proxy nullProxy];\n'%(arg[0][1]))
+                        else:                                
                             self.addToMethodBody('\tif(![[%s isNull] boolValue]) {\n'%(prevVar))
                             self.addToMethodBody('\t\tProxy *_p = va_arg(v_args, Proxy*);\n')
                             self.addToMethodBody('\t\t%s = (_p ? _p : %s);\n'%(arg[0][1], arg[0][1]))
@@ -508,19 +600,25 @@ class TranslatorIOS(translator.Translator):
         return
     
     def intConstant(self, intConst):
+        #constId = self.addIntConstant(intConst)
+        #self.addToMethodBody(constId)
         self.addToMethodBody('[Proxy proxyWithInt:%d]'%(intConst))
         return
     
     def floatConstant(self, floatConst):
+        #constId = self.addFloatConstant(floatConst)
+        #self.addToMethodBody(constId)
         self.addToMethodBody('[Proxy proxyWithFloat:%f]'%(floatConst))
         return
     
     def stringConstant(self, stringConst):
+        #constId = self.addStringConstant(stringConst)
+        #self.addToMethodBody(constId)
         self.addToMethodBody('[Proxy proxyWithString:@%s]'%(stringConst))
         return
 
     def nullConstant(self):
-        self.addToMethodBody('[Proxy nullProxy]')
+        self.addToMethodBody('CONST_NULL')
         return
         
     def assignBegin(self):
@@ -606,6 +704,14 @@ class TranslatorIOS(translator.Translator):
     def ifEnd(self, isSingleStatement):
         if not isSingleStatement:
             self.addToMethodBody(self.tabString(self.tabDepth) + '}')
+        return
+    
+    def beginCopy(self):
+        self.addToMethodBody('[')
+        return
+    
+    def endCopy(self):
+        self.addToMethodBody(' copy]')
         return
     
     def varDefBegin(self, name, isStatic, cnt):                        

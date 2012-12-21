@@ -123,6 +123,7 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('float', None, False, False, True))
         nativeScope.addSymbol(Symbol('label', None, False, False, True))
         nativeScope.addSymbol(Symbol('readfile', None, False, False, True))
+        nativeScope.addSymbol(Symbol('callMethod', None, False, False, True))
         return
     
     def tabString(self, depth):

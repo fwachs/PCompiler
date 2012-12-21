@@ -120,7 +120,16 @@ class Translator:
                 self.varDefBegin(n[1][1], isStatic , cnt)
                 
                 if n[2]:
-                    T = self.parseNode(n[2])
+                    if isinstance(n[2][0], types.ListType):
+                        for initz in n[2]:
+                            self.parseNode(initz)
+                    else:
+                        if n[2][0] in ['i', 'f', 's']:
+                            #self.beginCopy()
+                            self.parseNode(n[2])
+                            #self.endCopy()
+                        else:
+                            self.parseNode(n[2])
                 else:
                     self.nullConstant()
                                             
