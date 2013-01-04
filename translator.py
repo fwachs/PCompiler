@@ -256,7 +256,11 @@ class Translator:
                 self.assignBegin()                        
                 self.parseNode(node[2])            
                 self.assignMiddle()            
-                self.parseNode(node[3])
+                if isinstance(node[3][0], types.ListType):
+                    for n in node[3]:
+                        self.parseNode(n)
+                else:
+                    self.parseNode(node[3])
                 self.assignEnd(node[1])
             
         elif node[0] == 'uexp':
