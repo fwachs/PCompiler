@@ -124,6 +124,9 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('label', None, False, False, True))
         nativeScope.addSymbol(Symbol('readfile', None, False, False, True))
         nativeScope.addSymbol(Symbol('callMethod', None, False, False, True))
+        nativeScope.addSymbol(Symbol('c_opendb', None, False, False, True))
+        nativeScope.addSymbol(Symbol('round', None, False, False, True))
+        nativeScope.addSymbol(Symbol('ppy_userid', None, False, False, True))
         return
     
     def tabString(self, depth):

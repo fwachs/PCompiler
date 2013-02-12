@@ -435,7 +435,7 @@ class TranslatorIOS(translator.Translator):
                             self.addToMethodBody('\t\t%s = firstArg;\n'%(arg[0][1]))
                             self.addToMethodBody('\t}\n')
                         else:                                
-                            self.addToMethodBody('\tif(![[%s isNull] boolValue]) {\n'%(prevVar))
+                            self.addToMethodBody('\tif(!g_is_true(g_is_null(%s))) {\n'%(prevVar))
                             self.addToMethodBody('\t\tProxy *_p = va_arg(v_args, Proxy*);\n')
                             self.addToMethodBody('\t\t%s = (_p ? _p : %s);\n'%(arg[0][1], arg[0][1]))
                             self.addToMethodBody('\t}\n')
@@ -642,7 +642,7 @@ class TranslatorIOS(translator.Translator):
         elif operator == '/=':
             self.addToMethodBody('[%s div2self:%s]'%(leftSide, rightSide))
         else:
-            self.addToMethodBody('%s %s %s'%(leftSide, operator, rightSide))
+            self.addToMethodBody('%s %s [%s copy]'%(leftSide, operator, rightSide))
         return
 
     def arrayAssignBegin(self):
@@ -687,11 +687,11 @@ class TranslatorIOS(translator.Translator):
         return
     
     def ifExpBegin(self):
-        self.addToMethodBody('([')
+        self.addToMethodBody('(g_is_true(')
         return
     
     def ifExpEnd(self):
-        self.addToMethodBody(' boolValue]) {\n')
+        self.addToMethodBody(')) {\n')
         return
     
     def ifElse(self, isSingleStatement):
@@ -732,7 +732,7 @@ class TranslatorIOS(translator.Translator):
             else:
                 self.addToMethodBody(', *')
                 
-            self.addToMethodBody('%s = '%(name))
+            self.addToMethodBody('%s = ['%(name))
         return
     
     def varDefEnd(self, symbol):
@@ -741,6 +741,9 @@ class TranslatorIOS(translator.Translator):
             if not stinit:
                 stinit = 'Nil'
             symbol.staticInitializer = stinit
+            
+        if self.methodName != 'init':
+            self.addToMethodBody(' copy]')
         return
     
     def binOpBegin(self):
@@ -815,11 +818,11 @@ class TranslatorIOS(translator.Translator):
         return
     
     def forCondition(self):
-        self.addToMethodBody('; [')
+        self.addToMethodBody('; g_is_true(')
         return
     
     def forStep(self):
-        self.addToMethodBody(' boolValue]; ')
+        self.addToMethodBody('); ')
         return
     
     def forBlock(self):
@@ -831,11 +834,11 @@ class TranslatorIOS(translator.Translator):
         return
     
     def whileBegin(self):
-        self.addToMethodBody('while([')
+        self.addToMethodBody('while(g_is_true(')
         return
     
     def whileBlock(self):
-        self.addToMethodBody(' boolValue]) {\n')
+        self.addToMethodBody(')) {\n')
         return
     
     def whileEnd(self):
