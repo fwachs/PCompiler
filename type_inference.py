@@ -130,6 +130,10 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('c_res_file', None, False, False, True))
         nativeScope.addSymbol(Symbol('c_file_exist', None, False, False, True))
         nativeScope.addSymbol(Symbol('save', None, False, False, True))
+        nativeScope.addSymbol(Symbol('log', None, False, False, True))
+        nativeScope.addSymbol(Symbol('start_payment', None, False, False, True))
+        nativeScope.addSymbol(Symbol('enable_payments', None, False, False, True))
+        nativeScope.addSymbol(Symbol('avatar_url', None, False, False, True))
         return
     
     def tabString(self, depth):
