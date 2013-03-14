@@ -106,10 +106,13 @@ class Translator:
         
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]
             isStatic = False
+            isWeak = False
             if len(node) >= 5:
                 for decs in node[4]:
                     if decs == 'static':
                         isStatic = True
+                    elif decs == 'weak':
+                        isWeak = True
                                             
             cnt = 0
             for n in node[2]:            
@@ -117,7 +120,7 @@ class Translator:
                 #if sym:
                 #    sym.isStatic = isStatic
                 
-                self.varDefBegin(n[1][1], isStatic , cnt)
+                self.varDefBegin(n[1][1], isStatic , isWeak, cnt)
                 
                 if n[2]:
                     if isinstance(n[2][0], types.ListType):

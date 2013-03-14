@@ -232,6 +232,7 @@ def p_Attribute_0(p):
 def p_ReservedNamespace(p):
     '''ReservedNamespace : PUBLIC
                          | STATIC
+                         | WEAK
                          | PRIVATE
                          | PROTECTED
                          | OVERRIDE

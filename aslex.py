@@ -8,7 +8,7 @@ reserved = (
     'NAMESPACE', 'NATIVE', 'NEW', 'NULL', 'NUMBER',
     'OVERRIDE', 'PACKAGE', 'PRIVATE', 'PROTECTED', 'PROTOTYPE', 'PUBLIC',
     'RETURN',  'STATIC', 'STRING', 'SUPER', 'SWITCH', 'THIS', 'THROW',  'TRUE', 'TRY', 'TYPEOF', 
-    'USE', 'UINT', 'VAR', 'VOID', 'WHILE', 'WITH'
+    'USE', 'UINT', 'VAR', 'VOID', 'WHILE', 'WITH', 'WEAK'
     )
 tokens = reserved + (
     # Literals (identifier, integer constant, float constant, string constant)

@@ -642,7 +642,7 @@ class TranslatorIOS(translator.Translator):
         elif operator == '/=':
             self.addToMethodBody('[%s div2self:%s]'%(leftSide, rightSide))
         else:
-            self.addToMethodBody('%s %s [%s copy]'%(leftSide, operator, rightSide))
+            self.addToMethodBody('%s %s [%s smart_copy]'%(leftSide, operator, rightSide))
         return
 
     def arrayAssignBegin(self):
@@ -711,13 +711,18 @@ class TranslatorIOS(translator.Translator):
         return
     
     def endCopy(self):
-        self.addToMethodBody(' copy]')
+        self.addToMethodBody(' smart_copy]')
         return
     
-    def varDefBegin(self, name, isStatic, cnt):                        
+    def varDefBegin(self, name, isStatic, isWeak, cnt):                        
         if self.methodName == 'init':
             if isStatic:
                 self.beginMethodBuffering()
+            elif isWeak:
+                self.hFileVarDefs += '\t__weak %s %s;\n'%(self.getNativeType(None), name)
+                self.hFilePropDefs += '@property (weak) Proxy *%s;\n'%(name)
+    
+                self.addToMethodBody('\t\tself.%s = '%(name))
             else:
                 self.hFileVarDefs += '\t%s %s;\n'%(self.getNativeType(None), name)
                 self.hFilePropDefs += '@property (strong) Proxy *%s;\n'%(name)
@@ -743,7 +748,7 @@ class TranslatorIOS(translator.Translator):
             symbol.staticInitializer = stinit
             
         if self.methodName != 'init':
-            self.addToMethodBody(' copy]')
+            self.addToMethodBody(' smart_copy]')
         return
     
     def binOpBegin(self):
