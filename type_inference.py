@@ -135,6 +135,7 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('enable_payments', None, False, False, True))
         nativeScope.addSymbol(Symbol('avatar_url', None, False, False, True))
         nativeScope.addSymbol(Symbol('bind', None, False, False, True))
+        nativeScope.addSymbol(Symbol('ga_tracker_event', None, False, False, True))
         return
     
     def tabString(self, depth):
