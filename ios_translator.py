@@ -61,7 +61,7 @@ class TranslatorIOS(translator.Translator):
         
     def beginFile(self, dirname, fileName):
         
-        path = dirname.replace('projects/' + self.projectName, 'projects/' + self.projectName + '/ios')        
+        path = dirname.replace(self.projectName, self.projectName + '/ios')        
         if not os.path.exists(path):
             os.makedirs(path)
         
@@ -136,7 +136,7 @@ class TranslatorIOS(translator.Translator):
                     if not child.isStatic and child.isVar:
                         if not definedVars.has_key(name):
                             definedVars[name] = name;
-                            f.write('\t@property (strong) Proxy *%s;\n'%(name))
+                            f.write('\t@property (strong) id <ProxyProtocol>%s;\n'%(name))
                 
         for cls in self.inferencer.symbolsStack.children:
             if isinstance(cls, type_inference.Scope):
@@ -149,9 +149,9 @@ class TranslatorIOS(translator.Translator):
                         definedMethods[name] = name;
                         if not child.isStatic: 
                             if name[0:3] == 'set':
-                                f.write('\t- (void)%s:(Proxy *)firstArg, ...;\n'%(name))
+                                f.write('\t- (void)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(name))
                             else:
-                                f.write('\t- (Proxy *)%s:(Proxy *)firstArg, ...;\n'%(name))
+                                f.write('\t- (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(name))
     
                             if not definedVars.has_key(name):
                                 f.write('\t@property (strong) MethodCall %s;\n'%(name))
@@ -163,7 +163,7 @@ class TranslatorIOS(translator.Translator):
             elif not cls.isGlobal:
                 definedMethods[cls.name] = cls.name;
                 f.write('\t@property (strong) MethodCall %s;\n'%(cls.name))
-                f.write('\t- (Proxy *)%s:(Proxy *)firstArg, ...;\n'%(cls.name))
+                f.write('\t- (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(cls.name))
                 
         f.write('\n@end\n')
         
@@ -234,9 +234,9 @@ class TranslatorIOS(translator.Translator):
             name = child.name
                 
             if not child.isStatic and name != self.className:
-                superSymbol = symbol.superScope;
-                if not (superSymbol and superSymbol.findSymbol(name)):
-                    self.mFileBufs += '@synthesize %s;\n'%(name)
+#                superSymbol = symbol.superScope;
+#                if not (superSymbol and superSymbol.findSymbol(name)):
+                self.mFileBufs += '@synthesize %s;\n'%(name)
         self.mFileBufs += '\n'
 
         superSym = symbol.superScope
@@ -290,16 +290,16 @@ class TranslatorIOS(translator.Translator):
                     if name == self.className:
                         continue
                         
-                    self.addToMethodBody('\tself.%s = ^(Proxy *firstArg, ...)\n\t{\n'%(name) +
-                                         '\t\tProxy *ret;\n' +
+                    self.addToMethodBody('\tself.%s = ^(id <ProxyProtocol>firstArg, ...)\n\t{\n'%(name) +
+                                         '\t\tid <ProxyProtocol>ret;\n' +
                                          '\t\tva_list v_args;\n' +
                                          '\t\tva_start(v_args, firstArg);\n\n' +
-                                         '\t\tProxy *arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
+                                         '\t\tid <ProxyProtocol>arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
                                          '\t\targ[0] = firstArg;\n' +
                                          '\t\tint i = 0;\n' +
                                          '\t\twhile(arg[i]) {\n' +
                                          '\t\t\ti++;\n' +
-                                         '\t\t\targ[i] = va_arg(v_args, Proxy*);\n' +
+                                         '\t\t\targ[i] = va_arg(v_args, id <ProxyProtocol>);\n' +
                                          '\t\t}\n\t\tva_end(v_args);\n\n' +
                                          '\t\tret = [weakSelf %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(name) +
                                          '\n\t\treturn ret;\n\t};\n\n'
@@ -312,22 +312,22 @@ class TranslatorIOS(translator.Translator):
         for child in symbol.children:
             if child.isStatic:
                 if child.isVar:
-                    self.addToMethodBody('static Proxy *_%s;\n\n'%(child.name))
-                    self.addToMethodBody('+ (Proxy*)%s\n{\n\t@synchronized(self)\n\t{\n\t\tif(_%s == Nil) {\n\t\t\t_%s = %s;\n\t\t}\n\t}\n\n\treturn _%s;\n}\n\n'%(child.name, child.name, child.name, child.staticInitializer, child.name))
-                    self.addToMethodBody('+ (void)set%s:(Proxy*)newValue\n{\n\t_%s = newValue;\n}\n\n'%(child.name[0:1].title() + child.name[1:], child.name))
-                    self.hFileMethodDefs += '+ (Proxy*)%s;\n'%(child.name)
-                    self.hFileMethodDefs += '+ (void)set%s:(Proxy *)firstArg;\n'%(child.name[0:1].title() + child.name[1:])
+                    self.addToMethodBody('static id <ProxyProtocol>_%s;\n\n'%(child.name))
+                    self.addToMethodBody('+ (id <ProxyProtocol>)%s\n{\n\t@synchronized(self)\n\t{\n\t\tif(_%s == Nil) {\n\t\t\t_%s = %s;\n\t\t}\n\t}\n\n\treturn _%s;\n}\n\n'%(child.name, child.name, child.name, child.staticInitializer, child.name))
+                    self.addToMethodBody('+ (void)set%s:(id <ProxyProtocol>)newValue\n{\n\t_%s = newValue;\n}\n\n'%(child.name[0:1].title() + child.name[1:], child.name))
+                    self.hFileMethodDefs += '+ (id <ProxyProtocol>%s;\n'%(child.name)
+                    self.hFileMethodDefs += '+ (void)set%s:(id <ProxyProtocol>)firstArg;\n'%(child.name[0:1].title() + child.name[1:])
                 else:
-                    self.addToMethodBody('+ (MethodCall)%s\n{\n\tMethodCall m = ^(Proxy *firstArg, ...)\n\t{\n'%(child.name) +
-                                         '\t\tProxy *ret;\n' +
+                    self.addToMethodBody('+ (MethodCall)%s\n{\n\tMethodCall m = ^(id <ProxyProtocol>firstArg, ...)\n\t{\n'%(child.name) +
+                                         '\t\tid <ProxyProtocol>ret;\n' +
                                          '\t\tva_list v_args;\n' +
                                          '\t\tva_start(v_args, firstArg);\n\n' +
-                                         '\t\tProxy *arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
+                                         '\t\tid <ProxyProtocol>arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
                                          '\t\targ[0] = firstArg;\n' +
                                          '\t\tint i = 0;\n' +
                                          '\t\twhile(arg[i]) {\n' +
                                          '\t\t\ti++;\n' +
-                                         '\t\t\targ[i] = va_arg(v_args, Proxy*);\n' +
+                                         '\t\t\targ[i] = va_arg(v_args, id <ProxyProtocol>);\n' +
                                          '\t\t}\n\t\tva_end(v_args);\n\n' +
                                          '\t\tret = [%s %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(self.className, child.name) +
                                          '\n\t\treturn ret;\n\t};\n\n' +
@@ -356,7 +356,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def getNativeType(self, itype):
-        return 'Proxy *'
+        return 'id <ProxyProtocol>'
     
     def beginMethod(self, node, returnsVoid):
         self.constructorCalledSuper = False
@@ -376,7 +376,7 @@ class TranslatorIOS(translator.Translator):
                 print 'Global method not found: %s %s'%(self.methodName, node)
             sym.isGlobal = True
             self.beginMethodBuffering()
-            self.addToMethodBody('Proxy *g_%s(Proxy *firstArg, ...)\n{\n'%(self.methodName))
+            self.addToMethodBody('id <ProxyProtocol>g_%s(id <ProxyProtocol>firstArg, ...)\n{\n'%(self.methodName))
         else :
             if node[1] == 0:
                 funcString = '- (void)defineInstanceVars_' + self.className
@@ -397,15 +397,16 @@ class TranslatorIOS(translator.Translator):
                             break
 
                 if methodName == 'initWithArgs':
-                    funcString = '- (Proxy *)%s:(Proxy *)firstArg, ...'%(self.classConstructor(self.className))
-                    self.hFileMethodDefs += '- (id)initWithArgs:(Proxy *)firstArg, ...;\n'                
-                    self.hFileMethodDefs += '- (id)%s:(Proxy *)firstArg, ...;\n'%(self.classConstructor(self.className))                
+                    funcString = '- (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...'%(self.classConstructor(self.className))
+                    self.hFileMethodDefs += '- (id)initWithArgs:(id <ProxyProtocol>)firstArg, ...;\n'                
+                    self.hFileMethodDefs += '- (id)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(self.classConstructor(self.className))                
                 else:                        
-                    funcString = '%s (Proxy *)%s:(Proxy *)firstArg, ...'%(staticMode, methodName)
+                    funcString = '%s (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...'%(staticMode, methodName)
                     if staticMode == '-':
+                        self.hFileMethodDefs += '%s (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(staticMode, methodName)
                         self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(methodName)
                     else:
-                        self.hFileMethodDefs += '+ (Proxy*)%s:(Proxy *)firstArg, ...;\n'%(methodName)                
+                        self.hFileMethodDefs += '+ (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(methodName)                
                 
             self.addToMethodBody(funcString + '\n{\n')
             
@@ -422,7 +423,7 @@ class TranslatorIOS(translator.Translator):
                     self.addToMethodBody('\tva_list v_args;\n\tva_start(v_args, firstArg);\n')
                     prevVar = ''
                     for arg in signature:
-                        self.addToMethodBody('\tProxy *%s = '%(arg[0][1]))
+                        self.addToMethodBody('\tid <ProxyProtocol>%s = '%(arg[0][1]))
                         if len(arg) == 1:
                             self.addToMethodBody('[Proxy nullProxy];\n')
                         else:
@@ -436,7 +437,7 @@ class TranslatorIOS(translator.Translator):
                             self.addToMethodBody('\t}\n')
                         else:                                
                             self.addToMethodBody('\tif(!g_is_true(g_is_null(%s))) {\n'%(prevVar))
-                            self.addToMethodBody('\t\tProxy *_p = va_arg(v_args, Proxy*);\n')
+                            self.addToMethodBody('\t\tid <ProxyProtocol>_p = va_arg(v_args, id <ProxyProtocol>);\n')
                             self.addToMethodBody('\t\t%s = (_p ? _p : %s);\n'%(arg[0][1], arg[0][1]))
                             self.addToMethodBody('\t}\n')
                         prevVar = arg[0][1]
@@ -478,7 +479,7 @@ class TranslatorIOS(translator.Translator):
                     if self.methodName == self.className:
                         methodName = 'initWithArgs'
                         
-                        self.addToMethodBody('- (id)initWithArgs:(Proxy *)firstArg, ...\n{\n');
+                        self.addToMethodBody('- (id)initWithArgs:(id <ProxyProtocol>)firstArg, ...\n{\n');
                         
                         if not self.constructorCalledSuper:
                             superSym = self.inferencer.thisScope.superScope
@@ -491,12 +492,12 @@ class TranslatorIOS(translator.Translator):
                             
                         self.addToMethodBody('\t[self defineInstanceVars_%s];\n\n'%(self.className))
                         self.addToMethodBody('\tva_list v_args;\n\tva_start(v_args, firstArg);\n\n' +
-                                         '\tProxy *arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
+                                         '\tid <ProxyProtocol>arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
                                          '\targ[0] = firstArg;\n' +
                                          '\tint i = 0;\n' +
                                          '\twhile(arg[i]) {\n' +
                                          '\t\ti++;\n' +
-                                         '\t\targ[i] = va_arg(v_args, Proxy*);\n' +
+                                         '\t\targ[i] = va_arg(v_args, id <ProxyProtocol>);\n' +
                                          '\t}\n\tva_end(v_args);\n\n' +
                                          '\tself = [self %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(self.classConstructor(self.className)) +
                                          '\n\treturn self;\n}\n\n')
@@ -720,12 +721,12 @@ class TranslatorIOS(translator.Translator):
                 self.beginMethodBuffering()
             elif isWeak:
                 self.hFileVarDefs += '\t__weak %s %s;\n'%(self.getNativeType(None), name)
-                self.hFilePropDefs += '@property (weak) Proxy *%s;\n'%(name)
+                self.hFilePropDefs += '@property (weak) id <ProxyProtocol>%s;\n'%(name)
     
                 self.addToMethodBody('\t\tself.%s = '%(name))
             else:
                 self.hFileVarDefs += '\t%s %s;\n'%(self.getNativeType(None), name)
-                self.hFilePropDefs += '@property (strong) Proxy *%s;\n'%(name)
+                self.hFilePropDefs += '@property (strong) id <ProxyProtocol>%s;\n'%(name)
     
                 self.addToMethodBody('\t\tself.%s = '%(name))
         else:
@@ -847,6 +848,28 @@ class TranslatorIOS(translator.Translator):
         return
     
     def whileEnd(self):
+        self.addToMethodBody(self.tabString(self.tabDepth) + '}')
+        return
+    
+    def blockBegin(self, varDef, argList):
+        self.addToMethodBody('void (^%s)('%(varDef[2][0][1][1]))
+        
+        if argList:
+            for v in argList:
+                self.addToMethodBody('id <ProxyProtocol> %s, '%(v[1]))
+    
+            self.addToMethodBody('...) = ^(')
+            
+            for v in argList:
+                self.addToMethodBody('id <ProxyProtocol> %s, '%(v[1]))
+
+            self.addToMethodBody(' ...) {\n')
+        else:
+            self.addToMethodBody(') = ^() {\n')
+        
+        return
+    
+    def blockEnd(self):
         self.addToMethodBody(self.tabString(self.tabDepth) + '}')
         return
     

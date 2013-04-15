@@ -251,6 +251,8 @@ def p_Statement_0(p):
                  | SwitchStatement
                  | DoStatement Semicolon
                  | WhileStatement
+                 | BlockStatement
+                 | BlockEmptyStatement
                  | ForStatement
                  | WithStatement
                  | ContinueStatement Semicolon
@@ -337,6 +339,14 @@ def p_DoStatement(p):
 def p_WhileStatement(p):
     'WhileStatement : WHILE ParenListExpression Substatement'
     p[0] = ['while', p[2], p[3],p.lineno(1)]
+
+def p_BlockStatement(p):
+    'BlockStatement : VariableDefinition BLOCK ParenListExpression Substatement'
+    p[0] = ['block', p[1], p[3], p[4],p.lineno(1)]
+
+def p_BlockEmptyStatement(p):
+    'BlockEmptyStatement : VariableDefinition BLOCK Substatement'
+    p[0] = ['block', p[1], None, p[3], p.lineno(1)]
 
 def p_ForStatement_0(p):
     'ForStatement : FOR LPAREN ForInitializer SEMI OptionalExpression SEMI OptionalExpression RPAREN Substatement'

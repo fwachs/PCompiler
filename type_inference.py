@@ -73,6 +73,10 @@ class TypeInferencer():
         #self.symbolsStack.addScope(nativeScope)
         nativeScope = self.symbolsStack
 
+        symScreen = Symbol('Screen', None, False, False, True)
+        symScreen.fileName = 'Screen.h'
+        nativeScope.addSymbol(symScreen)
+        
         nativeScope.addSymbol(Symbol('addsprite', None, False, False, False))
         nativeScope.addSymbol(Symbol('pos', None, False, False, False))
         nativeScope.addSymbol(Symbol('_setevent', None, False, False, False))
@@ -135,7 +139,7 @@ class TypeInferencer():
         nativeScope.addSymbol(Symbol('enable_payments', None, False, False, True))
         nativeScope.addSymbol(Symbol('avatar_url', None, False, False, True))
         nativeScope.addSymbol(Symbol('bind', None, False, False, True))
-        nativeScope.addSymbol(Symbol('ga_tracker_event', None, False, False, True))
+        nativeScope.addSymbol(Symbol('fabs', None, False, False, True))
         return
     
     def tabString(self, depth):
@@ -276,7 +280,8 @@ class TypeInferencer():
             print "Class: ", node[1], "extends", superName , "implements", interfaces 
                 
             for child in node[3]:
-                self.scanNode(child, clsScope)   
+                self.scanNode(child, clsScope)
+                   
         elif node[0] == 'interface':
             clsScope = scope.findSymbol(node[1])
             if not clsScope:        

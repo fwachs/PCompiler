@@ -44,8 +44,8 @@ class Translator:
     def begin(self):
         self.inferencer = type_inference.TypeInferencer()
         
-        self.currentDir = '/Users/rafa/Desarrollo/2clams/PapayaGameSDK/projects/'
-        self.projectName = 'housewifewars'            
+        self.currentDir = '/Users/rafa/Desarrollo/2clams/uTnt Projects/'
+        self.projectName = 'KitchenRage'            
     
         while self.passCount < self.maxPasses:
             print "Pass: ", self.passCount
@@ -347,6 +347,18 @@ class Translator:
                     r1 = self.parseNode([node[2]])        
                 
             self.whileEnd()
+            
+        elif node[0] == 'block':        
+            self.blockBegin(node[1], node[2])
+            
+            #self.whileBlock()
+            if node[3]:
+                if isinstance(node[3][0], types.ListType):            
+                    r1 = self.parseNode(node[3])        
+                else:
+                    r1 = self.parseNode([node[3]])        
+                
+            self.blockEnd()
             
         elif node[0] == 'for':
             self.forBegin()
