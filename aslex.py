@@ -22,7 +22,7 @@ tokens = reserved + (
     
     # Assignment (=, *=, /=, %=, +=, -=, <<=, >>=, >>>=, &=, ^=, |=, &&=, ||=)
     'EQUALS', 'TIMESEQUAL', 'DIVEQUAL', 'MODEQUAL', 'PLUSEQUAL', 'MINUSEQUAL',
-    'LSHIFTEQUAL','RSHIFTEQUAL', 'URSHIFTEQUAL',  'ANDEQUAL', 'XOREQUAL', 'OREQUAL', 'LANDEQUAL', 'LOREQUAL',
+    'LSHIFTEQUAL','RSHIFTEQUAL', 'URSHIFTEQUAL',  'ANDEQUAL', 'XOREQUAL', 'OREQUAL', 'LANDEQUAL', 'LOREQUAL', 'BLOCKASSIGN',
 
     # Increment/decrement (++,--)
     'PLUSPLUS', 'MINUSMINUS',
@@ -98,6 +98,7 @@ t_OREQUAL          = r'\|='
 t_XOREQUAL         = r'^='
 t_LANDEQUAL        = r'&&='
 t_LOREQUAL         = r'\|\|='
+t_BLOCKASSIGN      = r'->'
 
 # Increment/decrement
 t_PLUSPLUS         = r'\+\+'

@@ -76,13 +76,15 @@ class TypeInferencer():
         symScreen = Symbol('Screen', None, False, False, True)
         symScreen.fileName = 'Screen.h'
         nativeScope.addSymbol(symScreen)
+        symScreenR = Symbol('ScreenRouter', None, False, False, True)
+        symScreenR.fileName = 'ScreenRouter.h'
+        nativeScope.addSymbol(symScreenR)
         
         nativeScope.addSymbol(Symbol('addsprite', None, False, False, False))
         nativeScope.addSymbol(Symbol('pos', None, False, False, False))
         nativeScope.addSymbol(Symbol('_setevent', None, False, False, False))
         nativeScope.addSymbol(Symbol('append', None, False, False, False))
         nativeScope.addSymbol(Symbol('scale', None, False, False, False))
-        nativeScope.addSymbol(Symbol('stop', None, False, False, False))
         nativeScope.addSymbol(Symbol('trace', None, False, False, True))
         nativeScope.addSymbol(Symbol('addaction', None, False, False, False))
         nativeScope.addSymbol(Symbol('repeat', None, False, False, True))

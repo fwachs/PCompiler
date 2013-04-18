@@ -341,12 +341,12 @@ def p_WhileStatement(p):
     p[0] = ['while', p[2], p[3],p.lineno(1)]
 
 def p_BlockStatement(p):
-    'BlockStatement : VariableDefinition BLOCK ParenListExpression Substatement'
-    p[0] = ['block', p[1], p[3], p[4],p.lineno(1)]
+    'BlockStatement : VariableDefinition BLOCKASSIGN BLOCK ParenListExpression Substatement'
+    p[0] = ['block', p[1], p[4], p[5],p.lineno(1)]
 
 def p_BlockEmptyStatement(p):
-    'BlockEmptyStatement : VariableDefinition BLOCK Substatement'
-    p[0] = ['block', p[1], None, p[3], p.lineno(1)]
+    'BlockEmptyStatement : VariableDefinition BLOCKASSIGN BLOCK Substatement'
+    p[0] = ['block', p[1], None, p[4], p.lineno(1)]
 
 def p_ForStatement_0(p):
     'ForStatement : FOR LPAREN ForInitializer SEMI OptionalExpression SEMI OptionalExpression RPAREN Substatement'
