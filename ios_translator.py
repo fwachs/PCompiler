@@ -124,6 +124,7 @@ class TranslatorIOS(translator.Translator):
         f = open(self.currentDir + self.projectName + '/ios/CustomProxyProtocol.h', 'w+')
         
         f.write('#import <Foundation/Foundation.h>\n\n')
+        f.write('@protocol ProxyProtocol;\n\n')
         f.write('@protocol CustomProxyProtocol <NSObject>\n\n')
                 
         definedVars = {}
@@ -153,8 +154,8 @@ class TranslatorIOS(translator.Translator):
                             else:
                                 f.write('\t- (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(name))
     
-                            if not definedVars.has_key(name):
-                                f.write('\t@property (strong) MethodCall %s;\n'%(name))
+                            #if not definedVars.has_key(name):
+                            #    f.write('\t@property (strong) MethodCall %s;\n'%(name))
                         #else:
                             #f.write('\t+ (Proxy*)%s;\n'%(name))
                             #f.write('\t+ (void)set%s:(Proxy *)firstArg, ...;\n'%(name[0:1].title() + name[1:]))
@@ -162,7 +163,7 @@ class TranslatorIOS(translator.Translator):
 
             elif not cls.isGlobal:
                 definedMethods[cls.name] = cls.name;
-                f.write('\t@property (strong) MethodCall %s;\n'%(cls.name))
+                #f.write('\t@property (strong) MethodCall %s;\n'%(cls.name))
                 f.write('\t- (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(cls.name))
                 
         f.write('\n@end\n')
@@ -233,7 +234,7 @@ class TranslatorIOS(translator.Translator):
         for child in symbol.children:
             name = child.name
                 
-            if not child.isStatic and name != self.className:
+            if not child.isStatic and name != self.className and child.isVar:
 #                superSymbol = symbol.superScope;
 #                if not (superSymbol and superSymbol.findSymbol(name)):
                 self.mFileBufs += '@synthesize %s;\n'%(name)
@@ -280,6 +281,7 @@ class TranslatorIOS(translator.Translator):
         return
 
     def buildMethodProperties(self):
+        return;
         self.addToMethodBody('- (void)defineMethods\n{\n\t__weak typeof(self) weakSelf = self;\n\n\t[super defineMethods];\n\n');
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         for child in symbol.children:
@@ -308,6 +310,7 @@ class TranslatorIOS(translator.Translator):
         return
     
     def buildStaticAccessors(self):
+        return
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         for child in symbol.children:
             if child.isStatic:
@@ -404,7 +407,7 @@ class TranslatorIOS(translator.Translator):
                     funcString = '%s (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...'%(staticMode, methodName)
                     if staticMode == '-':
                         self.hFileMethodDefs += '%s (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(staticMode, methodName)
-                        self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(methodName)
+                        #self.hFileMethodDefs += '@property (strong) MethodCall %s;\n'%(methodName)
                     else:
                         self.hFileMethodDefs += '+ (id <ProxyProtocol>)%s:(id <ProxyProtocol>)firstArg, ...;\n'%(methodName)                
                 
