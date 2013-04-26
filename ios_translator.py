@@ -228,9 +228,15 @@ class TranslatorIOS(translator.Translator):
     def beginClass(self, node):
         self.className = node[1]
         
-        self.mFileBufs += '@implementation %s\n\n'%(self.className)
-        
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
+        
+        self.mFileBufs += '\n'
+        for child in symbol.children:
+            if child.isStatic and child.isVar:
+                self.mFileBufs += 'id <ProxyProtocol> %s;\n'%(child.name)
+        
+        self.mFileBufs += '\n@implementation %s\n\n'%(self.className)
+        
         for child in symbol.children:
             name = child.name
                 
