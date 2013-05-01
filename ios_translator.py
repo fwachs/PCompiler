@@ -74,7 +74,7 @@ class TranslatorIOS(translator.Translator):
         self.hFileHandler = open('%s/%s'%(path, hFileName), 'w+')
         
         self.hFileHandler.write('#import <Foundation/Foundation.h>\n#import "proxy.h"\n')
-        self.mFileHandler.write('#import "%s"\n#import "types.h"\n#import "globals.h"\n\n'%(hFileName))
+        self.mFileHandler.write('#import "%s"\n#import "types.h"\n\n'%(hFileName))
         return
     
     def endFile(self):
@@ -230,11 +230,6 @@ class TranslatorIOS(translator.Translator):
         
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         
-        self.mFileBufs += '\n'
-        for child in symbol.children:
-            if child.isStatic and child.isVar:
-                self.mFileBufs += 'id <ProxyProtocol> %s;\n'%(child.name)
-        
         self.mFileBufs += '\n@implementation %s\n\n'%(self.className)
         
         for child in symbol.children:
@@ -316,7 +311,6 @@ class TranslatorIOS(translator.Translator):
         return
     
     def buildStaticAccessors(self):
-        return
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         for child in symbol.children:
             if child.isStatic:
@@ -324,25 +318,8 @@ class TranslatorIOS(translator.Translator):
                     self.addToMethodBody('static id <ProxyProtocol>_%s;\n\n'%(child.name))
                     self.addToMethodBody('+ (id <ProxyProtocol>)%s\n{\n\t@synchronized(self)\n\t{\n\t\tif(_%s == Nil) {\n\t\t\t_%s = %s;\n\t\t}\n\t}\n\n\treturn _%s;\n}\n\n'%(child.name, child.name, child.name, child.staticInitializer, child.name))
                     self.addToMethodBody('+ (void)set%s:(id <ProxyProtocol>)newValue\n{\n\t_%s = newValue;\n}\n\n'%(child.name[0:1].title() + child.name[1:], child.name))
-                    self.hFileMethodDefs += '+ (id <ProxyProtocol>%s;\n'%(child.name)
+                    self.hFileMethodDefs += '+ (id <ProxyProtocol>)%s;\n'%(child.name)
                     self.hFileMethodDefs += '+ (void)set%s:(id <ProxyProtocol>)firstArg;\n'%(child.name[0:1].title() + child.name[1:])
-                else:
-                    self.addToMethodBody('+ (MethodCall)%s\n{\n\tMethodCall m = ^(id <ProxyProtocol>firstArg, ...)\n\t{\n'%(child.name) +
-                                         '\t\tid <ProxyProtocol>ret;\n' +
-                                         '\t\tva_list v_args;\n' +
-                                         '\t\tva_start(v_args, firstArg);\n\n' +
-                                         '\t\tid <ProxyProtocol>arg[] = {Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil, Nil};\n' +
-                                         '\t\targ[0] = firstArg;\n' +
-                                         '\t\tint i = 0;\n' +
-                                         '\t\twhile(arg[i]) {\n' +
-                                         '\t\t\ti++;\n' +
-                                         '\t\t\targ[i] = va_arg(v_args, id <ProxyProtocol>);\n' +
-                                         '\t\t}\n\t\tva_end(v_args);\n\n' +
-                                         '\t\tret = [%s %s:arg[0], arg[1], arg[2], arg[3], arg[4], arg[5], arg[6], arg[7], arg[8], arg[9], arg[10], arg[11], arg[12], arg[13], arg[14], Nil];\n'%(self.className, child.name) +
-                                         '\n\t\treturn ret;\n\t};\n\n' +
-                                         '\treturn m;\n}\n\n'
-                                         )
-                    self.hFileMethodDefs += '+ (MethodCall)%s;\n'%(child.name)
         return
 
     def beginInterface(self, node):
