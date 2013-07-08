@@ -58,6 +58,7 @@ class TypeInferencer():
     floatSymbol = None
     stringSymbol = None
     currentFile = ''
+    returnFound = False
     
     def __init__(self):
         self.intSymbol = Symbol('int', 'int')
@@ -79,69 +80,6 @@ class TypeInferencer():
         symScreenR = Symbol('ScreenRouter', None, False, False, True)
         symScreenR.fileName = 'ScreenRouter.h'
         nativeScope.addSymbol(symScreenR)
-        
-        nativeScope.addSymbol(Symbol('addsprite', None, False, False, False))
-        nativeScope.addSymbol(Symbol('pos', None, False, False, False))
-        nativeScope.addSymbol(Symbol('_setevent', None, False, False, False))
-        nativeScope.addSymbol(Symbol('append', None, False, False, False))
-        nativeScope.addSymbol(Symbol('scale', None, False, False, False))
-        nativeScope.addSymbol(Symbol('trace', None, False, False, True))
-        nativeScope.addSymbol(Symbol('addaction', None, False, False, False))
-        nativeScope.addSymbol(Symbol('repeat', None, False, False, True))
-        nativeScope.addSymbol(Symbol('sequence', None, False, False, True))
-        nativeScope.addSymbol(Symbol('moveto', None, False, False, True))
-        nativeScope.addSymbol(Symbol('scaleto', None, False, False, True))
-        nativeScope.addSymbol(Symbol('v_scale', None, False, False, True))
-        nativeScope.addSymbol(Symbol('getscene', None, False, False, True))
-        nativeScope.addSymbol(Symbol('rand', None, False, False, True))
-        nativeScope.addSymbol(Symbol('len', None, False, False, True))
-        nativeScope.addSymbol(Symbol('quitgame', None, False, False, True))
-        nativeScope.addSymbol(Symbol('str', None, False, False, True))
-        nativeScope.addSymbol(Symbol('int', None, False, False, True))
-        nativeScope.addSymbol(Symbol('c_addtimer', None, False, False, True))
-        nativeScope.addSymbol(Symbol('parsexml', None, False, False, True))
-        nativeScope.addSymbol(Symbol('ppy_listachievements', None, False, False, True))
-        nativeScope.addSymbol(Symbol('ppy_unlockachievement', None, False, False, True))
-        nativeScope.addSymbol(Symbol('dict', None, False, False, True))
-        nativeScope.addSymbol(Symbol('json_loads', None, False, False, True))
-        nativeScope.addSymbol(Symbol('createsound', None, False, False, True))
-        nativeScope.addSymbol(Symbol('createaudio', None, False, False, True))
-        nativeScope.addSymbol(Symbol('c_invoke', None, False, False, True))
-        nativeScope.addSymbol(Symbol('openUrl', None, False, False, True))
-        nativeScope.addSymbol(Symbol('getmodel', None, False, False, True))
-        nativeScope.addSymbol(Symbol('ppy_setscore', None, False, False, True))
-        nativeScope.addSymbol(Symbol('ppy_query', None, False, False, True))
-        nativeScope.addSymbol(Symbol('animate', None, False, False, True))
-        nativeScope.addSymbol(Symbol('sprite', None, False, False, True))
-        nativeScope.addSymbol(Symbol('http_request', None, False, False, True))
-        nativeScope.addSymbol(Symbol('moveby', None, False, False, True))
-        nativeScope.addSymbol(Symbol('abs', None, False, False, True))
-        nativeScope.addSymbol(Symbol('sin', None, False, False, True))
-        nativeScope.addSymbol(Symbol('cos', None, False, False, True))
-        nativeScope.addSymbol(Symbol('time', None, False, False, True))
-        nativeScope.addSymbol(Symbol('c_addtimer', None, False, False, True))
-        nativeScope.addSymbol(Symbol('g_moveto', None, False, False, True))
-        nativeScope.addSymbol(Symbol('g_scaleto', None, False, False, True))
-        nativeScope.addSymbol(Symbol('spawn', None, False, False, True))
-        nativeScope.addSymbol(Symbol('sqrt', None, False, False, True))
-        nativeScope.addSymbol(Symbol('screensize', None, False, False, True))
-        nativeScope.addSymbol(Symbol('delaytime', None, False, False, True))
-        nativeScope.addSymbol(Symbol('float', None, False, False, True))
-        nativeScope.addSymbol(Symbol('label', None, False, False, True))
-        nativeScope.addSymbol(Symbol('readfile', None, False, False, True))
-        nativeScope.addSymbol(Symbol('callMethod', None, False, False, True))
-        nativeScope.addSymbol(Symbol('c_opendb', None, False, False, True))
-        nativeScope.addSymbol(Symbol('round', None, False, False, True))
-        nativeScope.addSymbol(Symbol('ppy_userid', None, False, False, True))
-        nativeScope.addSymbol(Symbol('c_res_file', None, False, False, True))
-        nativeScope.addSymbol(Symbol('c_file_exist', None, False, False, True))
-        nativeScope.addSymbol(Symbol('save', None, False, False, True))
-        nativeScope.addSymbol(Symbol('log', None, False, False, True))
-        nativeScope.addSymbol(Symbol('start_payment', None, False, False, True))
-        nativeScope.addSymbol(Symbol('enable_payments', None, False, False, True))
-        nativeScope.addSymbol(Symbol('avatar_url', None, False, False, True))
-        nativeScope.addSymbol(Symbol('bind', None, False, False, True))
-        nativeScope.addSymbol(Symbol('fabs', None, False, False, True))
         return
     
     def tabString(self, depth):
@@ -220,7 +158,6 @@ class TypeInferencer():
             '''
 
         elif node[0] == 'fundef':#['fundef', 'f', ['funsig',], None]
-            #print "\tFunction: ", node[1]
             isStatic = False
             if len(node) >= 5:
                 for decs in node[4]:
@@ -232,8 +169,13 @@ class TypeInferencer():
 
             fnScope = scope.findLocalSymbol(node[1])
             if not fnScope:
+                self.returnFound = False
+                self.scanFunction(node[3])
+                print "\tFunction: %s -> %d"%(node[3], self.returnFound)
+                
                 fnScope = Scope(node[1], node)
                 fnScope.isStatic = isStatic
+                fnScope.returnsVoid = not self.returnFound
                 scope.addScope(fnScope)
             
                 if node[2][1]:
@@ -244,6 +186,7 @@ class TypeInferencer():
                 if node[3]:
                     for child in node[3]:
                         self.scanNode(child, fnScope)
+        
         elif node[0] == 'clsdef':
             clsScope = scope.findSymbol(node[1])
             if not clsScope:        
@@ -299,3 +242,66 @@ class TypeInferencer():
                 self.scanNode(child, clsScope)   
         return
         
+    def scanFunction(self, node):
+        if not node:
+            return
+        if len(node) == 0:
+            return
+                    
+        if node[0] == 'ret':
+            if node[1]:
+                self.returnFound = True;
+        elif node[0] == 'if':#['if', [['biexp',]], [['vardef', ],], ['if', [['biexp',], [['vardef', ],]],
+            for exp in node[1]:
+                self.scanFunction(exp)
+
+            if node[2]:
+                if isinstance(node[2][0], types.ListType):            
+                    r1 = self.scanFunction(node[2])        
+                else:
+                    r1 = self.scanFunction([node[2]])        
+            
+            if node[3]:
+                r2 = self.scanFunction(node[3])         
+                
+        elif node[0] == 'do': 
+            pass
+        
+        elif node[0] == 'while':        
+            for exp in node[1]:
+                self.scanFunction(exp)
+                
+            if node[2]:
+                if isinstance(node[2][0], types.ListType):            
+                    r1 = self.scanFunction(node[2])        
+                else:
+                    r1 = self.scanFunction([node[2]])        
+            
+        elif node[0] == 'block':        
+            if node[3]:
+                if isinstance(node[3][0], types.ListType):            
+                    r1 = self.scanFunction(node[3])        
+                else:
+                    r1 = self.scanFunction([node[3]])        
+            
+        elif node[0] == 'for':
+            if node[1]:
+                self.scanFunction(node[1])
+            
+            if node[2]:
+                for exp in node[2]:
+                    self.scanFunction(exp)
+            
+            if node[3]:
+                self.scanFunction(node[3][0])
+            
+            if node[4]:
+                if isinstance(node[4][0], types.ListType):            
+                    self.scanFunction(node[4])        
+                else:
+                    self.scanFunction([node[4]])                    
+        else:
+            for n in node:
+                if isinstance(n, types.ListType):            
+                    self.scanFunction(n)
+        return None

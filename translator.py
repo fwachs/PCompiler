@@ -1,4 +1,5 @@
-import types, copy, type_inference, ios_translator, sys, os
+import types, copy, type_inference
+import sys, os
 import aslex
 import asyacc
 
@@ -10,11 +11,19 @@ class Translator:
     currentFileName = ''
     currentDir = ''
     projectName = ''
+    tempBodyBuf = []
+    mFileMethodBody = ''
     
     @staticmethod
     def createTranslator(translatorType):
+        import android_translator
+        import ios_translator
+        
         if translatorType == 'ios':
-            return ios_translator.TranslatorIOS()
+           return android_translator.TranslatorAndroid()
+#            return ios_translator.TranslatorIOS()
+        elif translatorType == 'android':
+           return android_translator.TranslatorAndroid()
 
     def tabString(self, depth):
         tabs = ''
@@ -41,6 +50,23 @@ class Translator:
             idx += 1                          
         return  
     
+    def beginMethodBuffering(self):
+        self.tempBodyBuf.append('')
+        
+    def popBuff(self):
+        if len(self.tempBodyBuf) > 0:
+            return self.tempBodyBuf.pop()
+        
+    def addToMethodBody(self, text):
+        if len(self.tempBodyBuf) == 0:
+            self.mFileMethodBody += text
+        else:
+            self.tempBodyBuf[-1] += text
+        
+    def endMethodBuffering(self):
+        if len(self.tempBodyBuf) > 0:
+            self.mFileMethodBody += self.tempBodyBuf.pop()
+        
     def begin(self):
         self.inferencer = type_inference.TypeInferencer()
         
@@ -107,12 +133,19 @@ class Translator:
         if node[0] == 'vardef':#['vardef', 'const', [['varbind', ['typeid', 'b', ['int']], None]]]
             isStatic = False
             isWeak = False
+            isPublic = False
+            isFinal = False
             if len(node) >= 5:
                 for decs in node[4]:
                     if decs == 'static':
                         isStatic = True
                     elif decs == 'weak':
                         isWeak = True
+                    elif decs == 'public':
+                        isPublic = True
+
+            if node[1] == 'const':
+                isFinal = True
                                             
             cnt = 0
             for n in node[2]:            
@@ -120,7 +153,7 @@ class Translator:
                 #if sym:
                 #    sym.isStatic = isStatic
                 
-                self.varDefBegin(n[1][1], isStatic , isWeak, cnt)
+                self.varDefBegin(n[1][1], isStatic , isWeak, isPublic, isFinal, cnt)
                 
                 if n[2]:
                     if isinstance(n[2][0], types.ListType):
@@ -174,7 +207,7 @@ class Translator:
             self.newObjectEnd(len(node[2]))
             
         elif node[0] == 'call':#['call', ['id', 'f'], [[],[]]]                
-            self.methodCallBegin()
+            self.methodCallBegin(node[1])
                             
             isGlobal = False
             methodName = ''
@@ -199,12 +232,12 @@ class Translator:
                 if sym and sym.isGlobal:
                     isGlobal = True
                 
-            self.methodCallBeginArgs(len(node[2]), isGlobal);
+            self.methodCallBeginArgs(len(node[2]), methodName, isGlobal);
                            
             if len(node[2]):
                 for i in range(len(node[2])):
                     self.parseNode(node[2][i])
-                    self.methodCallArgument(i)
+                    self.methodCallArgument(i, len(node[2]))
             
             self.methodCallEnd(methodName, isGlobal)
             
@@ -258,7 +291,7 @@ class Translator:
             else:
                 self.assignBegin()                        
                 self.parseNode(node[2])            
-                self.assignMiddle()            
+                self.assignMiddle(node[1])            
                 if isinstance(node[3][0], types.ListType):
                     for n in node[3]:
                         self.parseNode(n)
@@ -406,7 +439,7 @@ class Translator:
                     self.statementEnd()
         return None
     
-    def beginFile(self, fileName):
+    def beginFile(self, dirname, fileName):
         return
     
     def endFile(self):
@@ -445,7 +478,7 @@ class Translator:
     def staticFunctionId(self, name):
         return
     
-    def methodCallBegin(self):
+    def methodCallBegin(self, node):
         return
     
     def methodCallArgument(self, argIdx):
@@ -460,7 +493,7 @@ class Translator:
     def newObjectArgument(self, argIdx):
         return
     
-    def newObjectEnd(self):
+    def newObjectEnd(self, argsCount):
         return
     
     def intConstant(self, intConst):
@@ -478,16 +511,16 @@ class Translator:
     def assignBegin(self):
         return
     
-    def assignMiddle(self, operator):
+    def assignMiddle(self):
         return
     
-    def assignEnd(self):
+    def assignEnd(self, operator):
         return
     
     def retBegin(self):
         return
     
-    def retEnd(self):
+    def retEnd(self, node):
         return
     
     def statementBegin(self):
@@ -547,6 +580,12 @@ class Translator:
     def whileEnd(self):
         return
     
+    def blockBegin(self, varDef, argList):
+        return
+    
+    def blockEnd(self):
+        return
+
     def continueStmt(self):
         return
     
@@ -580,12 +619,27 @@ class Translator:
     def arrayDefArgBegin(self):
         return
     
-    def arrayDefArgEnd(self, argType):
+    def arrayDefArgEnd(self):
         return
 
     def arrayDefEnd(self):
         return
-
+    
+    def binOpBegin(self):
+        return
+    
+    def binOpOperand(self, operator):
+        return
+    
+    def binOpEnd(self, operator, fromType, toType):
+        return
+    
+    def unOpBegin(self):
+        return
+    
+    def unOpEnd(self, operator):
+        return
+    
 if __name__=="__main__":
-    trslt = Translator.createTranslator('ios')
+    trslt = Translator.createTranslator('android')
     trslt.begin()           

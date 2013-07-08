@@ -8,10 +8,8 @@ class TranslatorIOS(translator.Translator):
     hFileMethodDefs = ''
     hFileBuff = ''
     mFileMethodDefs = ''
-    mFileMethodBody = ''
     mFileBufs = ''
     hFileImports = ''
-    tempBodyBuf = []
     definedIds = []
     className = None
     methodName = None
@@ -42,23 +40,6 @@ class TranslatorIOS(translator.Translator):
             self.mFileHandler.write('#import "%s"\n'%(header))
         return
     
-    def addToMethodBody(self, text):
-        if len(self.tempBodyBuf) == 0:
-            self.mFileMethodBody += text
-        else:
-            self.tempBodyBuf[-1] += text
-        
-    def beginMethodBuffering(self):
-        self.tempBodyBuf.append('')
-        
-    def popBuff(self):
-        if len(self.tempBodyBuf) > 0:
-            return self.tempBodyBuf.pop()
-        
-    def endMethodBuffering(self):
-        if len(self.tempBodyBuf) > 0:
-            self.mFileMethodBody += self.tempBodyBuf.pop()
-        
     def beginFile(self, dirname, fileName):
         
         path = dirname.replace(self.projectName, self.projectName + '/ios')        
@@ -116,6 +97,7 @@ class TranslatorIOS(translator.Translator):
             i = len(self.stringConstants) -1
             
         return 'CONST_S_%d'%(i)
+    
     def done(self):
         f = open(self.currentDir + self.projectName + '/ios/defs.h', 'w+')
         f.write(self.hFileImports)
@@ -531,12 +513,12 @@ class TranslatorIOS(translator.Translator):
     def staticFunctionId(self, name):
         return
     
-    def methodCallBegin(self):
+    def methodCallBegin(self, node):
         self.isInsideACall = True
         self.beginMethodBuffering()
         return
     
-    def methodCallBeginArgs(self, argCnt, isGlobal):
+    def methodCallBeginArgs(self, argCnt, name, isGlobal):
         if isGlobal:
             self.popBuff()
         else:
@@ -549,7 +531,7 @@ class TranslatorIOS(translator.Translator):
         self.beginMethodBuffering()
         return
         
-    def methodCallArgument(self, argIdx):
+    def methodCallArgument(self, argIdx, argCnt):
         self.isInsideACall = False
         self.addToMethodBody(', ')
         return
@@ -612,7 +594,7 @@ class TranslatorIOS(translator.Translator):
         self.beginMethodBuffering()            
         return
     
-    def assignMiddle(self):
+    def assignMiddle(self, operator):
         self.beginMethodBuffering()
         return
     
@@ -701,7 +683,7 @@ class TranslatorIOS(translator.Translator):
         self.addToMethodBody(' smart_copy]')
         return
     
-    def varDefBegin(self, name, isStatic, isWeak, cnt):                        
+    def varDefBegin(self, name, isStatic, isWeak, isPublic, isFinal, cnt):                        
         if self.methodName == 'init':
             if isStatic:
                 self.beginMethodBuffering()

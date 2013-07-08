@@ -233,6 +233,7 @@ def p_ReservedNamespace(p):
     '''ReservedNamespace : PUBLIC
                          | STATIC
                          | WEAK
+                         | FINAL
                          | PRIVATE
                          | PROTECTED
                          | OVERRIDE
