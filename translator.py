@@ -13,6 +13,7 @@ class Translator:
     projectName = ''
     tempBodyBuf = []
     mFileMethodBody = ''
+    companyIdentifier = 'com.twoclams'
     
     @staticmethod
     def createTranslator(translatorType):
@@ -71,7 +72,9 @@ class Translator:
         self.inferencer = type_inference.TypeInferencer()
         
         self.currentDir = '/Users/rafa/Desarrollo/2clams/uTnt Projects/'
-        self.projectName = 'KitchenRage'            
+        self.projectName = 'KitchenRage'
+        
+        self.start();            
     
         while self.passCount < self.maxPasses:
             print "Pass: ", self.passCount
@@ -96,6 +99,9 @@ class Translator:
         self.done()
         
         print "Done!"
+        return
+    
+    def start(self):
         return
     
     def compile(self, dirname, filename):

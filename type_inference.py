@@ -165,7 +165,8 @@ class TypeInferencer():
                         isStatic = True
             
             if node[1][0:3] == 'set':
-                node[1] = '_' + node[1]
+                node[1] = node[1]
+                #node[1] = '_' + node[1]
 
             fnScope = scope.findLocalSymbol(node[1])
             if not fnScope:

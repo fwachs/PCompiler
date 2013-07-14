@@ -4,14 +4,31 @@ class TranslatorAndroid(translator.Translator):
     path = ''
     className = ''
     classFileHandler = None
+    proxyFileHandler = None
     tabDepth = -1
     methodName = None
+    definedMethods = {}
+   
+    def start(self):
+        self.path = '/users/Rafa/Desarrollo/2clams/KitchenRage Android/src/com/twoclams/kitchenrage/game'
+        
+        protocolPath = '/users/Rafa/Desarrollo/2clams/KitchenRage Android/src/com/twoclams/framework'         
+        if not os.path.exists(protocolPath):
+            os.makedirs(protocolPath)        
+                
+        self.proxyFileHandler = open(protocolPath + '/ProxyProtocol.java', 'w+')
+        self.proxyFileHandler.write('package com.twoclams.framework;\n\n')
+        self.proxyFileHandler.write('import com.twoclams.Kalimba.DynamicTypes.Proxy;\n\n')
+                
+        self.proxyFileHandler.write("public interface ProxyProtocol {\n")        
+        return
    
     def done(self):
+        self.proxyFileHandler.write("}")
+        self.proxyFileHandler.close();        
         return
     
     def beginFile(self, dirname, fileName):
-        self.path = dirname.replace(self.projectName, self.projectName + '/android')        
         if not os.path.exists(self.path):
             os.makedirs(self.path)        
         return
@@ -22,6 +39,10 @@ class TranslatorAndroid(translator.Translator):
     def beginClass(self, node):
         self.className = node[1]
         self.classFileHandler = open('%s/%s.java'%(self.path, self.className), 'w+')
+        
+        self.classFileHandler.write('package %s.%s.game;\n\n'%(self.companyIdentifier, self.projectName.lower()))
+        self.classFileHandler.write('import com.twoclams.Kalimba.*;\n\n')
+        self.classFileHandler.write('import com.twoclams.Kalimba.DynamicTypes.*;\n\n')
         
         symbol = self.inferencer.symbolsStack.findSymbol(self.className)
         extends = 'Proxy'
@@ -65,12 +86,15 @@ class TranslatorAndroid(translator.Translator):
                     sym.isStatic = True
                     break
                 
-        returnType = 'ProxyProtocol'
+        returnType = 'Proxy'
         if sym.returnsVoid:
             returnType = 'void'
+            
+        if methodName == self.className:
+            returnType = ''
 
         funcString = '\n\tpublic%s %s %s('%(staticMode, returnType, methodName)
-            
+                    
         signature = None
         if node[1] != 0:
             signature = node[2][1]
@@ -81,11 +105,20 @@ class TranslatorAndroid(translator.Translator):
                     for arg in signature:
                         if idx > 0:
                             funcString = funcString + ', '
-                        funcString = funcString + 'ProxyProtocol %s'%(arg[0][1])
+                        funcString = funcString + 'Proxy %s'%(arg[0][1])
                         idx += 1
 
         self.classFileHandler.write(funcString + ') \n\t{\n')
-        return
+
+        if not self.definedMethods.has_key(methodName) and methodName != self.className and sym.isStatic == False:
+            self.definedMethods[methodName] = methodName;
+            
+            if sym.returnsVoid:
+                self.proxyFileHandler.write(funcString + ') {}\n')
+            else:
+                self.proxyFileHandler.write(funcString + ') { return Proxy.nullProxy(); }\n')
+    
+            return
     
     def emptyRet(self, node):
         return
@@ -119,7 +152,10 @@ class TranslatorAndroid(translator.Translator):
         return
     
     def methodCallBeginArgs(self, argCnt, name, isGlobal):
-        self.classFileHandler.write('.%s('%(name))
+        if name == 'initWithArgs':
+            self.classFileHandler.write('(')
+        else:
+            self.classFileHandler.write('.%s('%(name))
         return
         
     def methodCallArgument(self, argIdx, argCnt):
@@ -165,22 +201,28 @@ class TranslatorAndroid(translator.Translator):
     
     def assignMiddle(self, operator):
         operatorName = ''
-        if operator == '+=':
-            operatorName = 'add2self'
-        elif operator == '-=':
-            operatorName = 'sub2self'
-        elif operator == '*=':
-            operatorName = 'mul2self'
-        elif operator == '/=':
-            operatorName = 'div2self'
+        if operator == '=':
+            self.classFileHandler.write(' = ')
         else:
-            operatorName = 'copy'
-
-        self.classFileHandler.write('.%s('%(operatorName))
+            if operator == '+=':
+                operatorName = 'add2self'
+            elif operator == '-=':
+                operatorName = 'sub2self'
+            elif operator == '*=':
+                operatorName = 'mul2self'
+            elif operator == '/=':
+                operatorName = 'div2self'
+            else:
+                operatorName = 'copy'
+    
+            self.classFileHandler.write('.%s('%(operatorName))
         return
     
     def assignEnd(self, operator):
-        self.classFileHandler.write(')')
+        if operator == '=':
+            self.classFileHandler.write('.copy()')
+        else:
+            self.classFileHandler.write(')')
         return
     
     def retBegin(self):
@@ -238,6 +280,11 @@ class TranslatorAndroid(translator.Translator):
             final = 'final '
             
         self.classFileHandler.write("%s%s%sProxy %s = "%(pub, stat, final, name))        
+        
+        if self.methodName:
+            if not self.definedMethods.has_key(name) and isStatic == False:
+                self.definedMethods[name] = name;
+                self.proxyFileHandler.write('\n\tpublic Proxy %s;\n'%(name))
         return
     
     def varDefEnd(self, symbol):
